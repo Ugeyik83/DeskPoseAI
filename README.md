@@ -11,6 +11,8 @@ Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü b
 
 ## Özellikler
 
+![DeskPoseAI Video](docs/DeskPoseAI__Ergonomi.mp4)
+
 ### Duruş Analizi
 - **FHP Risk Skoru** — Baş Öne Eğilme (Forward Head Posture) riski, 0–100 (göz-omuz / omuz genişliği oranı)
 - **Kalibre Mod (CAL)** — Kişisel baseline kaydedilir, sapma skoru hesaplanır
