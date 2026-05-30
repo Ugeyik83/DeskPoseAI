@@ -3,7 +3,7 @@
 **Real-time Desk Ergonomics Monitoring**  
 Camera-based ergonomics analysis for office workers. Works with a single laptop webcam — no extra hardware required.
 
-![DeskPoseAI Overview](docs/overview.png)
+![DeskPoseAI Overview](docs/overview_en.png)
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
 
