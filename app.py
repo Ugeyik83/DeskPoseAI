@@ -26,8 +26,8 @@ from core.session_logger import SessionLogger
 
 
 st.set_page_config(
-    page_title="PostureGuard",
-    page_icon="🪑",
+    page_title="DeskPoseAI",
+    page_icon="🖥️",
     layout="wide",
     initial_sidebar_state="expanded",
 )
