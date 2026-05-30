@@ -374,7 +374,16 @@ class PoseAnalyzer:
             self._blink_frames = 0
 
         cutoff = now_mono - 60.0
-        recent_blinks = sum(1 for t in self._blink_count if t > cutoff)
+        recent_blinks_list = [t for t in self._blink_count if t > cutoff]
+
+        # En az 30 sn veri yoksa henüz güvenilir değil
+        oldest_ear_time = now_mono - (len(self._ear_history) / 15.0)
+        elapsed = now_mono - oldest_ear_time
+        if elapsed < 30.0:
+            recent_blinks = -1.0
+        else:
+            recent_blinks = float(len(recent_blinks_list))
+
         avg_ear = float(np.mean(self._ear_history)) if self._ear_history else ear
 
         # PERCLOS hesabı
