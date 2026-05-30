@@ -1,131 +1,129 @@
 # 🖥️ DeskPoseAI
 
-**Real-time Desk Ergonomics Monitoring**  
-Camera-based ergonomics analysis for office workers. Works with a single laptop webcam — no extra hardware required.
+**Gerçek Zamanlı Masabaşı Ergonomi İzleme**  
+Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü bilgisayar web kamerası ile çalışır — ek donanım gerekmez.
 
-![DeskPoseAI Overview](docs/overview_en.png)
+![DeskPoseAI Genel Bakış](docs/overview_en.png)
 
-
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
-
----
-
-
-## Features
-
-### Posture Analysis
-- **FHP Risk Score** — Forward Head Posture risk, 0–100 (eye-shoulder / shoulder-width ratio)
-- **Calibrated mode (CAL)** — Personal baseline recorded, deviation score calculated
-- **Estimated mode (EST)** — Absolute reference values without calibration
-- **Head Tilt Angle (Roll)** — `arctan(Δy/Δx)` — lateral flexion detection
-- **Shoulder Asymmetry** — Left/right shoulder height difference (trapezius tension indicator)
-
-### Eye Health
-- **EAR Blink Rate** — Eye Aspect Ratio (Soukupová & Čech 2016)
-  - Adaptive threshold: calibration EAR × 0.70
-  - Normal: 15–20 blinks/min, drops to 3–7/min at screen
-  - CVS (Computer Vision Syndrome) early warning
-- **Screen Distance** — Iris diameter based (Bekerman 2014, iris = 11.7mm constant)
-  - Iris Diameter Constant | Jonuscheit et al., Ophthalmic Physiol Opt 2019 — HVID mean ~11.8mm |
-  - With calibration: baseline iris pixel × distance ratio
-  - Without calibration: pinhole heuristic (~60° FOV)
-  - ISO 9241 standard: 50–100 cm ideal
-
-### Vital Signs
-- **Heart Rate (rPPG)** — CHROM algorithm (De Haan & Jeanne 2013)
-  - Forehead + left cheek + right cheek ROI
-  - Welch PSD frequency analysis
-  - Physiological priority band: 60–150 BPM
-  - SNR control, median smoothing
-  - ROI visualization toggle
-
-### Ergonomics Tracking
-- **Sitting Duration** — Counts while face detected, resets when user leaves
-  - 30 min → break reminder
-  - 60 min → stand up alert
-  - 90 min → long break required
-- **Calibration Quality Filter** — Samples rejected if tilt/asymmetry is poor
-- **Visibility Gating** — Unreliable frames discarded
+[![Streamlit Uygulaması](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
 
 ---
 
-## Algorithms
+## Özellikler
 
-### FHP (Forward Head Posture)
+### Duruş Analizi
+- **FHP Risk Skoru** — Baş Öne Eğilme (Forward Head Posture) riski, 0–100 (göz-omuz / omuz genişliği oranı)
+- **Kalibre Mod (CAL)** — Kişisel baseline kaydedilir, sapma skoru hesaplanır
+- **Tahmini Mod (EST)** — Kalibrasyon olmadan mutlak referans değerleri
+- **Baş Eğim Açısı (Roll)** — `arctan(Δy/Δx)` — yanal fleksiyon tespiti
+- **Omuz Asimetrisi** — Sol/sağ omuz yükseklik farkı (trapezius gerilim göstergesi)
+
+### Göz Sağlığı
+- **EAR Göz Kırpma Hızı** — Göz Görünüm Oranı / Eye Aspect Ratio (Soukupová & Čech 2016)
+  - Adaptif eşik: kalibrasyon EAR × 0.70
+  - Normal: 15–20 kırpma/dk, ekran başında 3–7/dk'ya düşer
+  - CVS (Bilgisayar Görme Sendromu) erken uyarısı
+- **Ekran Mesafesi** — Iris çapı tabanlı (Bekerman 2014, iris = 11,7 mm sabit)
+  - Iris Çapı Sabiti | Jonuscheit ve ark., Ophthalmic Physiol Opt 2019 — HVID ortalama ~11,8 mm |
+  - Kalibrasyonlu: baseline iris pikseli × mesafe oranı
+  - Kalibrasyonsuz: delik göz buluşu (~60° GGA)
+  - ISO 9241 standardı: 50–100 cm ideal
+
+### Yaşamsal Bulgular
+- **Kalp Atış Hızı (rPPG)** — CHROM algoritması (De Haan & Jeanne 2013)
+  - Alın + sol yanak + sağ yanak ROI
+  - Welch PSD frekans analizi
+  - Fizyolojik öncelik bandı: 60–150 BPM
+  - SNR kontrolü, medyan yumuşatma
+  - ROI görselleştirme açma/kapama
+
+### Ergonomi Takibi
+- **Oturma Süresi** — Yüz algılandığı sürece sayar, kullanıcı ayrılınca sıfırlanır
+  - 30 dk → mola hatırlatıcısı
+  - 60 dk → ayağa kalk uyarısı
+  - 90 dk → uzun mola gerekli
+- **Kalibrasyon Kalite Filtresi** — Eğim/asimetri bozuksa örnek reddedilir
+- **Görünürlük Kapısı** — Güvenilmez kareler iptal edilir
+
+---
+
+## Algoritmalar
+
+### FHP (Baş Öne Eğilme)
 
 ```
-S1 = (shoulder_y - eye_y)  / shoulder_width   → decreases when leaning forward
-S2 = (shoulder_y - nose_y) / shoulder_width   → more sensitive signal
+S1 = (omuz_y - göz_y)  / omuz_genişliği   → öne eğilince azalır
+S2 = (omuz_y - burun_y) / omuz_genişliği  → daha hassas sinyal
 
-CAL mode: delta_eye × 40 + delta_nose × 60 → deviation score
-EST mode: (1.5 - S1) × 50 + (1.2 - S2) × 50 → composite score
+CAL modu: delta_göz × 40 + delta_burun × 60 → sapma skoru
+EST modu: (1.5 - S1) × 50 + (1.2 - S2) × 50 → bileşik skor
 ```
 
-### EAR (Eye Aspect Ratio)
+### EAR (Göz Görünüm Oranı)
 
 ```
 EAR = (|p2-p6| + |p3-p5|) / (2 × |p1-p4|)
-Blink: EAR < threshold, ≥2 consecutive frames
-Adaptive threshold: calibration_EAR × 0.70 (clamp: 0.15–0.25)
+Kırpma: EAR < eşik, ≥2 ardışık kare
+Adaptif eşik: kalibrasyon_EAR × 0.70 (sınır: 0.15–0.25)
 ```
 
-### Screen Distance
+### Ekran Mesafesi
 
 ```
-With calibration:    dist = 60cm × (baseline_iris_px / current_iris_px)
-Without calibration: dist = (11.7mm / 1000) × focal_px / iris_px × 100
+Kalibrasyonlu:    mesafe = 60 cm × (baseline_iris_piksel / mevcut_iris_piksel)
+Kalibrasyonsuz:   mesafe = (11.7 mm / 1000) × odak_piksel / iris_piksel × 100
 ```
 
 ### rPPG CHROM
 
 ```
-1. Forehead + cheek ROI → RGB mean (skip if motion detected)
-2. Normalize: Rn = R/mean(R), Gn, Bn
-3. Chrominance: Xs = 3Rn - 2Gn, Ys = 1.5Rn + Gn - 1.5Bn
-4. S = Xs - (std_Xs / std_Ys) × Ys → detrend
+1. Alın + yanak ROI → RGB ortalama (hareket algılanırsa atla)
+2. Normalleştir: Rn = R/ort(R), Gn, Bn
+3. Krominans: Xs = 3Rn - 2Gn, Ys = 1.5Rn + Gn - 1.5Bn
+4. S = Xs - (std_Xs / std_Ys) × Ys → trend giderme
 5. Welch PSD (nperseg=128, noverlap=64)
-6. Priority band: 60–150 BPM
-7. SNR = peak / median(noise) > 1.0
-8. Gaussian-weighted peak → BPM
-9. Median smoothing (last 15 values)
+6. Öncelik bandı: 60–150 BPM
+7. SNR = tepe / medyan(gürültü) > 1.0
+8. Gauss ağırlıklı tepe → BPM
+9. Medyan yumuşatma (son 15 değer)
 ```
 
 ---
 
-## Signal Filtering
+## Sinyal Filtreleme
 
-**One-Euro Filter** — applied to all signals:
-- High smoothing at low speed, low smoothing at high speed
-- Minimizes lag
+**One-Euro Filtresi** — tüm sinyallere uygulanır:
+- Düşük hızda yüksek yumuşatma, yüksek hızda düşük yumuşatma
+- Gecikmeyi minimize eder
 
-**Parameters:**
+**Parametreler:**
 
-| Signal | min_cutoff | beta |
+| Sinyal | min_cutoff | beta |
 |--------|-----------|------|
 | FHP (S1, S2) | 1.0 / 0.5 | 0.007 / 0.003 |
-| Tilt | 1.0 | 0.007 |
-| Shoulder asym. | 0.5 | 0.003 |
+| Eğim | 1.0 | 0.007 |
+| Omuz asim. | 0.5 | 0.003 |
 | EAR | 2.0 | 0.01 |
-| Screen distance | 0.5 | 0.003 |
-| Heart rate | 0.15 | 0.05 |
+| Ekran mesafesi | 0.5 | 0.003 |
+| Kalp atış hızı | 0.15 | 0.05 |
 
 ---
 
-## Risk Thresholds
+## Risk Eşikleri
 
-| Metric | 🟢 Good | 🟡 Warning | 🔴 Critical |
-|--------|---------|-----------|------------|
-| FHP Score | < 25 | 25–50 | > 50 |
-| Head tilt | < 5° | 5–10° | > 10° |
-| Shoulder asym. | < 3% | 3–6% | > 6% |
-| Blink rate | ≥ 10/min | 5–10/min | < 5/min |
-| Screen distance | 50–100 cm | 40–50 cm | < 40 cm |
-| Sitting duration | < 30 min | 30–60 min | > 60 min |
-| Heart rate | 60–100 BPM | 50–60 / 100–120 | < 50 / > 120 |
+| Metrik | 🟢 İyi | 🟡 Uyarı | 🔴 Kritik |
+|--------|--------|----------|----------|
+| FHP Skoru | < 25 | 25–50 | > 50 |
+| Baş eğimi | < 5° | 5–10° | > 10° |
+| Omuz asim. | < %3 | %3–6 | > %6 |
+| Göz kırpma | ≥ 10/dk | 5–10/dk | < 5/dk |
+| Ekran mesafesi | 50–100 cm | 40–50 cm | < 40 cm |
+| Oturma süresi | < 30 dk | 30–60 dk | > 60 dk |
+| Kalp atış hızı | 60–100 BPM | 50–60 / 100–120 | < 50 / > 120 |
 
 ---
 
-## Installation
+## Kurulum
 
 ```bash
 git clone https://github.com/Ugeyik83/DeskPoseAI.git
@@ -134,7 +132,7 @@ pip install -r requirements.txt
 streamlit run app.py
 ```
 
-### Requirements
+### Gereksinimler
 
 ```
 streamlit
@@ -148,37 +146,37 @@ av
 
 ---
 
-## Usage
+## Kullanım
 
-1. **START** — activate camera
-2. **Calibrate** — sit upright, wait 3 sec → personal baseline saved
-3. Monitor metric cards
-4. **CAL** badge → calibrated mode active
-5. **EST** badge → estimated mode (calibration recommended)
+1. **START** — kamerayı etkinleştir
+2. **Kalibre Et** — dik otur, 3 sn bekle → kişisel baseline kaydedilir
+3. Metrik kartlarını izle
+4. **CAL** rozeti → kalibre mod aktif
+5. **EST** rozeti → tahmini mod (kalibrasyon önerilir)
 
-### Calibration tips
-- Sit upright, shoulders level
-- Look straight at the camera
-- Stay still for 3 seconds
-- Good lighting → better rPPG accuracy
-
----
-
-## Limitations
-
-| Constraint | Description |
-|-----------|-------------|
-| **Front camera only** | CVA measurement is a proxy, not clinical |
-| **rPPG accuracy** | ±5–8 BPM, light/motion dependent |
-| **Screen distance** | ±10–15 cm error without calibration |
-| **Dark clothing** | Shoulder detection degrades |
-| **Poor lighting** | rPPG unreliable |
-
-> FHP Risk Score is not a clinical CVA measurement. Not for medical use.
+### Kalibrasyon ipuçları
+- Dik otur, omuzların seviyede olsun
+- Doğrudan kameraya bak
+- 3 saniye hareketsiz kal
+- İyi aydınlatma → daha iyi rPPG doğruluğu
 
 ---
 
-## File Structure
+## Sınırlamalar
+
+| Kısıt | Açıklama |
+|-------|----------|
+| **Yalnızca ön kamera** | CVA ölçümü klinik değil, yaklaşımdır |
+| **rPPG doğruluğu** | ±5–8 BPM, ışık ve harekete bağımlı |
+| **Ekran mesafesi** | Kalibrasyonsuz ±10–15 cm hata |
+| **Koyu giysi** | Omuz tespiti bozulur |
+| **Yetersiz aydınlatma** | rPPG güvenilmez |
+
+> FHP Risk Skoru klinik bir CVA ölçümü değildir. Tıbbi amaçla kullanılamaz.
+
+---
+
+## Dosya Yapısı
 
 ```
 DeskPoseAI/
@@ -186,52 +184,50 @@ DeskPoseAI/
 ├── requirements.txt
 ├── packages.txt
 ├── core/
-│   ├── pose_analyzer.py   # Main analysis engine
-│   ├── alert_manager.py   # OS notifications
-│   └── session_logger.py  # CSV logging
-└── logs/                  # Session logs
+│   ├── pose_analyzer.py   # Ana analiz motoru
+│   ├── alert_manager.py   # İşletim sistemi bildirimleri
+│   └── session_logger.py  # CSV kayıt
+└── logs/                  # Oturum kayıtları
 ```
 
 ---
 
-## Roadmap
+## Yol Haritası
 
-### Short Term
-- [ ] **Respiratory Rate** — shoulder y + rPPG low-band fusion (validation device needed: Polar H10)
-- [ ] **3D Head Pose (solvePnP)** — FaceMesh + OpenCV real pitch/yaw/roll → more accurate CVA proxy
-- [ ] **20-20-20 Reminder** — 20 min work → 20 sec look away → eye fatigue prevention
-- [ ] **Session PDF Report** — ergonomics summary, trend charts, recommendations
+### Kısa Vadeli
+- [ ] **Solunum Hızı** — omuz y + rPPG düşük bant füzyonu (doğrulama cihazı gerekli: Polar H10)
+- [ ] **3D Baş Pozu (solvePnP)** — FaceMesh + OpenCV gerçek pitch/yaw/roll → daha doğru CVA yaklaşımı
+- [ ] **20-20-20 Hatırlatıcısı** — 20 dk çalış → 20 sn uzağa bak → göz yorgunluğu önleme
+- [ ] **Oturum PDF Raporu** — ergonomi özeti, trend grafikleri, öneriler
 
-### Medium Term
-- [ ] **Desktop Application** — CustomTkinter + `cv2.VideoCapture` → remove WebRTC dependency
-- [ ] **PyInstaller Package** — Windows `.exe` / macOS `.app` → no Python required
-- [ ] **IPD Fusion** — Iris + interpupillary distance → screen distance error ±3 cm
-- [ ] **Multi-user Profiles** — Separate baseline per user
+### Orta Vadeli
+- [ ] **Masaüstü Uygulaması** — CustomTkinter + `cv2.VideoCapture` → WebRTC bağımlılığını kaldır
+- [ ] **PyInstaller Paketi** — Windows `.exe` / macOS `.app` → Python gerekmez
+- [ ] **IPD Füzyonu** — Iris + gözlerarası mesafe → ekran mesafesi hatası ±3 cm
+- [ ] **Çok Kullanıcılı Profiller** — Kullanıcı başına ayrı baseline
 
-### Long Term
-- [ ] **ML-based FHP** — Random Forest/LSTM posture classification from landmarks
-- [ ] **Ergonomics Score Trends** — Daily/weekly statistics dashboard
-- [ ] **HSE Integration** — Corporate employee health management system API
-- [ ] **Exoskeleton Trigger** — Critical posture → exoskeleton activation signal (research)
-- [ ] **HRV** — Retry with high-FPS camera + controlled environment
+### Uzun Vadeli
+- [ ] **ML Tabanlı FHP** — Landmark'lardan Random Forest/LSTM duruş sınıflandırması
+- [ ] **Ergonomi Skoru Trendleri** — Günlük/haftalık istatistik panosu
+- [ ] **İSG Entegrasyonu** — Kurumsal çalışan sağlığı yönetim sistemi API
+- [ ] **Egzoskeleton Tetikleyici** — Kritik duruş → egzoskeleton aktivasyon sinyali (araştırma)
+- [ ] **HRV** — Yüksek FPS kamera + kontrollü ortamda yeniden dene
 
 ---
 
-## References
+## Kaynaklar
 
-| Algorithm | Source |
+| Algoritma | Kaynak |
 |-----------|--------|
-| EAR Blink Detection | Soukupová & Čech, BMVC 2016 |
+| EAR Göz Kırpma Tespiti | Soukupová & Čech, BMVC 2016 |
 | CHROM rPPG | De Haan & Jeanne, IEEE TBME 2013 |
-| Iris Diameter Constant | Bekerman et al., IOVS 2014 |
-| CVA Clinical Threshold | Griegel-Morris et al., PTJ 1992 |
-| Screen Distance Standard | ISO 9241-5 |
-| One-Euro Filter | Casiez et al., CHI 2012 |
+| Iris Çapı Sabiti | Bekerman ve ark., IOVS 2014 |
+| CVA Klinik Eşiği | Griegel-Morris ve ark., PTJ 1992 |
+| Ekran Mesafesi Standardı | ISO 9241-5 |
+| One-Euro Filtresi | Casiez ve ark., CHI 2012 |
 
 ---
 
-## License
+## Lisans
 
-MIT License — open for academic and commercial use.
-
-[def]: image.png
+MIT Lisansı — akademik ve ticari kullanıma açık.
