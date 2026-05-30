@@ -265,7 +265,7 @@ init_state()
 # ─── Sidebar ─────────────────────────────────────────────────────────────────
 
 with st.sidebar:
-    st.markdown("### 🪑 PostureGuard")
+    st.markdown("### 🖥️ DeskPoseAI")
     st.markdown(
         '<div style="color:#8b949e;font-size:12px;margin-bottom:16px;">Masabaşı Duruş İzleme</div>',
         unsafe_allow_html=True)
