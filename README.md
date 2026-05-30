@@ -3,7 +3,7 @@
 **Gerçek Zamanlı Masabaşı Ergonomi İzleme**  
 Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü bilgisayar web kamerası ile çalışır — ek donanım gerekmez.
 
-![DeskPoseAI Genel Bakış](docs/overview_en.png)
+![DeskPoseAI Genel Bakış](docs/overview.png)
 
 [![Streamlit Uygulaması](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
 
