@@ -63,8 +63,8 @@ class SessionLogger:
 
             "calibration_active",
             "risk_level",
-            "perclos",
             "risk_score",
+            "perclos",
         ])
 
         self._file.flush()
@@ -100,8 +100,8 @@ class SessionLogger:
 
                 int(metrics.calibration_active),
                 metrics.risk_level,
-                round(getattr(metrics, 'perclos', -1.0), 2),
                 int(metrics.risk_score),
+                round(getattr(metrics, 'perclos', -1.0), 2),
             ])
 
             self._row_count += 1
