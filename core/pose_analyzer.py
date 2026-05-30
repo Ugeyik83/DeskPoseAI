@@ -195,6 +195,7 @@ class PoseAnalyzer:
         self._bpm_history = deque(maxlen=3)
         self._sitting_start: float = 0.0   # oturma başlangıç zamanı (monotonic)
         self.show_roi: bool = False
+        self._perclos_frame_count: int = 0
 
 
         self.pose = self.mp_pose.Pose(
@@ -382,14 +383,15 @@ class PoseAnalyzer:
         else:
             perclos_thresh = EAR_BLINK_THRESH
 
-        window = list(self._ear_history)[-PERCLOS_WINDOW:]
-        if len(window) >= 30:   # en az 2 sn veri olsun
-            closed = sum(1 for e in window if e < perclos_thresh)
-            self._perclos_score = (closed / len(window)) * 100.0
+        self._perclos_frame_count += 1
+        if smooth < perclos_thresh:
+            self._perclos_closed_frames += 1
+
+        win_size = len(self._ear_history)
+        if win_size >= 30:
+            self._perclos_score = (self._perclos_closed_frames / win_size) * 100.0
         else:
             self._perclos_score = -1.0
-
-        return float(recent_blinks), avg_ear, self._perclos_score
 
     def _draw_ear_landmarks(self, frame, face_lm, w: int, h: int,
                              ear_val: float, blink_rate: float):
