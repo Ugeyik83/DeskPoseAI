@@ -11,8 +11,12 @@ Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü b
 
 ## Özellikler
 
+<p align="left">
+  <a href="https://github.com/Ugeyik83/DeskPoseAI/issues/1">
+    <img src="docs/DeskPoseAI__Ergonomi.png" width="600" alt="DeskPoseAI Demo"/>
+  </a>
+</p>
 
-[![DeskPoseAI Demo](docs/DeskPoseAI__Ergonomi.png)](https://github.com/Ugeyik83/DeskPoseAI/issues/1)
 
 ### Duruş Analizi
 - **FHP Risk Skoru** — Baş Öne Eğilme (Forward Head Posture) riski, 0–100 (göz-omuz / omuz genişliği oranı)
