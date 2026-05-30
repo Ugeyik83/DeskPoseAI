@@ -11,9 +11,10 @@ Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü b
 
 ## Özellikler
 
+Video: 
 <p align="left">
   <a href="https://github.com/Ugeyik83/DeskPoseAI/issues/1">
-    <img src="docs/DeskPoseAI__Ergonomi.png" width="600" alt="DeskPoseAI Demo"/>
+    <img src="docs/DeskPoseAI__Ergonomi.png" width="300" alt="DeskPoseAI Demo"/>
   </a>
 </p>
 
