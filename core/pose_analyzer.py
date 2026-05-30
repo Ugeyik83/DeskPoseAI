@@ -111,6 +111,7 @@ class PostureMetrics:
     risk_score:         int
     feedback:           list
     heart_rate:         float
+    perclos:            float = 0.0
    
 
     @property
@@ -159,6 +160,10 @@ RIGHT_EYE_EAR = [362, 385, 387, 263, 373, 380]
 EAR_BLINK_THRESH  = 0.20
 EAR_CONSEC_FRAMES = 2
 BLINK_WINDOW      = 900
+
+# PERCLOS
+PERCLOS_WINDOW     = 900   # 60 sn @15fps
+PERCLOS_THRESHOLD  = 0.70  # tam açık EAR'ın %70'i altı = kapalı
 
 IRIS_REAL_DIAMETER_MM  = 11.7
 IRIS_BASELINE_DIST_CM  = 60.0
@@ -226,6 +231,9 @@ class PoseAnalyzer:
         self._blink_frames:     int   = 0
         self._blink_count:      deque = deque(maxlen=BLINK_WINDOW)
         self._f_ear = OneEuroFilter(freq=15.0, min_cutoff=2.0, beta=0.01)
+
+        self._perclos_closed_frames: int = 0   # penceredeki kapalı kare sayısı
+        self._perclos_score:         float = 0.0
 
         self._iris_calib_buffer: list = []
         self._calib_ear:         list = []  # kalibrasyonda toplanan EAR değerleri
@@ -352,10 +360,11 @@ class PoseAnalyzer:
         right_ear = ear_single(RIGHT_EYE_EAR)
         return (left_ear + right_ear) / 2.0, left_ear, right_ear
 
-    def _update_blink(self, ear: float, now_mono: float) -> Tuple[float, float]:
+    def _update_blink(self, ear: float, now_mono: float) -> Tuple[float, float, float]:
         smooth = self._f_ear.update(ear, now_mono)
         self._ear_history.append(smooth)
 
+        # Blink tespiti (mevcut)
         if smooth < EAR_BLINK_THRESH:
             self._blink_frames += 1
         else:
@@ -366,7 +375,21 @@ class PoseAnalyzer:
         cutoff = now_mono - 60.0
         recent_blinks = sum(1 for t in self._blink_count if t > cutoff)
         avg_ear = float(np.mean(self._ear_history)) if self._ear_history else ear
-        return float(recent_blinks), avg_ear
+
+        # PERCLOS hesabı
+        if self.baseline.valid and self.baseline.ear_open > 0:
+            perclos_thresh = self.baseline.ear_open * PERCLOS_THRESHOLD
+        else:
+            perclos_thresh = EAR_BLINK_THRESH
+
+        window = list(self._ear_history)[-PERCLOS_WINDOW:]
+        if len(window) >= 30:   # en az 2 sn veri olsun
+            closed = sum(1 for e in window if e < perclos_thresh)
+            self._perclos_score = (closed / len(window)) * 100.0
+        else:
+            self._perclos_score = -1.0
+
+        return float(recent_blinks), avg_ear, self._perclos_score
 
     def _draw_ear_landmarks(self, frame, face_lm, w: int, h: int,
                              ear_val: float, blink_rate: float):
@@ -739,7 +762,7 @@ class PoseAnalyzer:
             face_lm = face_results.multi_face_landmarks[0].landmark
 
             ear_raw, _, _ = self._compute_ear(face_lm, w, h)
-            blink_rate, avg_ear = self._update_blink(ear_raw, now)
+            blink_rate, avg_ear, perclos = self._update_blink(ear_raw, now)
 
             iris_px = self._compute_iris_px(face_lm, w, h)
             raw_dist = self._compute_screen_distance(iris_px, w)
@@ -776,6 +799,7 @@ class PoseAnalyzer:
             avg_ear = -1.0
             self._sitting_start = 0.0
             self.session.stationary_minutes = 0.0
+            perclos = -1.0
 
         # Kalibrasyon buffer — FaceMesh sonrası (avg_ear, iris_px tanımlı)
         if self._calibrating:
@@ -800,6 +824,7 @@ class PoseAnalyzer:
             avg_ear         = avg_ear,
             screen_distance = screen_distance,
             heart_rate      = heart_rate,
+            perclos         = perclos, 
         )
 
         self._update_session(metrics)
@@ -821,7 +846,7 @@ class PoseAnalyzer:
 
     def _classify(self, fhp_score, signals, tilt, shoulder_asym,
                   neck_var, nose_vis, calib_active,
-                  blink_rate, avg_ear, screen_distance, heart_rate) -> PostureMetrics:
+                  blink_rate, avg_ear, screen_distance, heart_rate, perclos) -> PostureMetrics:
         T        = THRESHOLDS
         score    = 0
         feedback = []
@@ -872,6 +897,16 @@ class PoseAnalyzer:
         # Yeni — hemen altına ekle:
         if shoulder_asym > T["shoulder_warning"] * 3:
             feedback.append("Omuz tespiti zayif — acik renk giysi/arka plan onerilir")
+        
+        if perclos >= 0:
+            if perclos > 30:
+                score += 20
+                feedback.append("Gözler çok sık kapalı (PERCLOS >%30) — ciddi yorgunluk")
+            elif perclos > 15:
+                score += 10
+                feedback.append("Gözler normalden fazla kapalı kalıyor (PERCLOS >%15)")
+            elif perclos > 8:
+                feedback.append("Hafif göz yorgunluğu belirtisi (PERCLOS >%8)")
 
         if not feedback:
             feedback.append("Duruş baseline'a yakın — böyle devam et" if calib_active
@@ -897,6 +932,7 @@ class PoseAnalyzer:
             risk_level         = risk,
             risk_score         = min(score, 100),
             feedback           = feedback,
+            perclos            = round(perclos, 1),
         )
 
     # ─── Oturum ──────────────────────────────────────────────────────────────
