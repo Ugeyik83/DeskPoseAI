@@ -4,7 +4,7 @@
 Camera-based ergonomics analysis for office workers. Works with a single laptop webcam — no extra hardware required.
 
 ![DeskPoseAI Overview](docs/overview_en.png)
-![DeskPoseAI Architecture](docs/deskposeai_architecture.svg)
+# ![DeskPoseAI Architecture](docs/deskposeai_architecture.svg)
 
 [![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
 
