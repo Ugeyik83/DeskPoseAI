@@ -392,6 +392,7 @@ class PoseAnalyzer:
             self._perclos_score = (self._perclos_closed_frames / win_size) * 100.0
         else:
             self._perclos_score = -1.0
+        return float(recent_blinks), avg_ear, self._perclos_score
 
     def _draw_ear_landmarks(self, frame, face_lm, w: int, h: int,
                              ear_val: float, blink_rate: float):
