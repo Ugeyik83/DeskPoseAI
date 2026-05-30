@@ -543,6 +543,21 @@ if ctx.state.playing and ctx.video_processor:
         else:
             blink_color, blink_text, blink_unit, blink_desc, blink_prog = "#3fb950", f"{br:.0f}", "/dk", "Normal (15–20/dk ideal)", min(br / 20 * 100, 100)
 
+        # PERCLOS
+        pc = metrics.perclos
+        if pc < 0:
+            perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#8b949e", "Ölçülüyor", "", "~30 sn sonra aktif", None
+        elif pc > 30:
+            perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#f85149", f"{pc:.1f}", "%", "Ciddi yorgunluk", pc
+        elif pc > 15:
+            perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#d29922", f"{pc:.1f}", "%", "Orta yorgunluk", pc
+        elif pc > 8:
+            perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#d29922", f"{pc:.1f}", "%", "Hafif yorgunluk", pc
+        else:
+            perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#3fb950", f"{pc:.1f}", "%", "Normal uyanıklık", pc
+
+
+
         # Ekran mesafesi
         d = metrics.screen_distance
         if d < 0:
@@ -579,6 +594,8 @@ if ctx.state.playing and ctx.video_processor:
                           dist_color, prog_pct=dist_prog)
                 + _metric("Göz Kırpma", blink_text, blink_unit, blink_desc,
                           blink_color, prog_pct=blink_prog)
+                + _metric("PERCLOS (Göz Kapalı %)", perc_text, perc_unit, perc_desc,
+                          perc_color, prog_pct=perc_prog)
                 + _metric("Baş Eğim Açısı (Roll)",
                           str(metrics.head_tilt_angle), "°",
                           "arctan(Δy/Δx) — yana dönüşle karışabilir",

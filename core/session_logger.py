@@ -63,6 +63,7 @@ class SessionLogger:
 
             "calibration_active",
             "risk_level",
+            "perclos",
             "risk_score",
         ])
 
@@ -99,6 +100,7 @@ class SessionLogger:
 
                 int(metrics.calibration_active),
                 metrics.risk_level,
+                round(getattr(metrics, 'perclos', -1.0), 2),
                 int(metrics.risk_score),
             ])
 
