@@ -22,6 +22,7 @@ Camera-based ergonomics analysis for office workers. Works with a single laptop 
   - Normal: 15–20 blinks/min, drops to 3–7/min at screen
   - CVS (Computer Vision Syndrome) early warning
 - **Screen Distance** — Iris diameter based (Bekerman 2014, iris = 11.7mm constant)
+  - Iris Diameter Constant | Jonuscheit et al., Ophthalmic Physiol Opt 2019 — HVID mean ~11.8mm |
   - With calibration: baseline iris pixel × distance ratio
   - Without calibration: pinhole heuristic (~60° FOV)
   - ISO 9241 standard: 50–100 cm ideal
