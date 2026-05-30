@@ -378,6 +378,7 @@ class PoseAnalyzer:
         avg_ear = float(np.mean(self._ear_history)) if self._ear_history else ear
 
         # PERCLOS hesabı
+
         if self.baseline.valid and self.baseline.ear_open > 0:
             perclos_thresh = self.baseline.ear_open * PERCLOS_THRESHOLD
         else:
@@ -388,10 +389,19 @@ class PoseAnalyzer:
             self._perclos_closed_frames += 1
 
         win_size = len(self._ear_history)
-        if win_size >= 30:
-            self._perclos_score = (self._perclos_closed_frames / win_size) * 100.0
+
+        # Pencere dolunca sayacı pencereyle senkronize et
+        if win_size >= PERCLOS_WINDOW:
+            oldest = list(self._ear_history)[0]
+            if oldest < perclos_thresh:
+                self._perclos_closed_frames -= 1
+
+        if win_size >= 90:   # en az 6 sn veri olsun
+            clamped = max(0, min(self._perclos_closed_frames, win_size))
+            self._perclos_score = (clamped / win_size) * 100.0
         else:
             self._perclos_score = -1.0
+
         return float(recent_blinks), avg_ear, self._perclos_score
 
     def _draw_ear_landmarks(self, frame, face_lm, w: int, h: int,
