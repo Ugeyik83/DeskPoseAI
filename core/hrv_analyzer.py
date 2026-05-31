@@ -190,7 +190,7 @@ class HRVAnalyzer:
 
         # 4. Bandpass filtre — 0.8–3Hz
         try:
-            b, a = butter(3, [0.8, 3.0], btype='band', fs=self.TARGET_FS)
+            b, a = butter(3, [0.7, 2.5], btype='band', fs=self.TARGET_FS)
             sig_resampled = filtfilt(b, a, sig_resampled)
         except Exception:
             pass
