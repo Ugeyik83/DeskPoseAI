@@ -38,39 +38,6 @@ class HRVAnalyzer:
         self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
 
-    # ── CIELAB a* dönüşümü — saf NumPy ──────────────────────────────────────
-    @staticmethod
-    def _rgb_to_astar(rgb_data: np.ndarray) -> np.ndarray:
-        """RGB → CIELAB a* kanalı. Hareket artefaktına daha dirençli."""
-        rgb_norm = np.clip(rgb_data / 255.0, 0, 1)
-
-        # sRGB → linear RGB
-        mask   = rgb_norm > 0.04045
-        linear = np.where(mask,
-                          ((rgb_norm + 0.055) / 1.055) ** 2.4,
-                          rgb_norm / 12.92)
-
-        # linear RGB → XYZ (D65)
-        M = np.array([
-            [0.4124564, 0.3575761, 0.1804375],
-            [0.2126729, 0.7151522, 0.0721750],
-            [0.0193339, 0.1191920, 0.9503041]
-        ])
-        xyz = linear @ M.T
-
-        # XYZ → LAB
-        xyz_n = np.array([0.95047, 1.00000, 1.08883])
-        xyz_r = xyz / xyz_n
-
-        epsilon = 0.008856
-        kappa   = 903.3
-        f = np.where(xyz_r > epsilon,
-                     xyz_r ** (1.0 / 3.0),
-                     (kappa * xyz_r + 16.0) / 116.0)
-
-        # a* = 500 * (f_x - f_y)
-        a_star = 500.0 * (f[:, 0] - f[:, 1])
-        return a_star
 
     # ── CHROM sinyali ────────────────────────────────────────────────────────
     @staticmethod
