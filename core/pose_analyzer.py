@@ -113,6 +113,7 @@ class PostureMetrics:
     feedback:           list
     heart_rate:         float
     perclos:            float = 0.0
+    hrv_rmssd:          float = -1.0
    
 
     @property
@@ -873,7 +874,8 @@ class PoseAnalyzer:
             avg_ear         = avg_ear,
             screen_distance = screen_distance,
             heart_rate      = heart_rate,
-            perclos         = perclos, 
+            perclos         = perclos,
+            hrv_rmssd       = self._hrv_rmssd,
         )
 
         self._update_session(metrics)
@@ -895,7 +897,7 @@ class PoseAnalyzer:
 
     def _classify(self, fhp_score, signals, tilt, shoulder_asym,
                   neck_var, nose_vis, calib_active,
-                  blink_rate, avg_ear, screen_distance, heart_rate, perclos) -> PostureMetrics:
+                  blink_rate, avg_ear, screen_distance, heart_rate, perclos, hrv_rmssd) -> PostureMetrics:
         T        = THRESHOLDS
         score    = 0
         feedback = []
@@ -982,6 +984,7 @@ class PoseAnalyzer:
             risk_score         = min(score, 100),
             feedback           = feedback,
             perclos            = round(perclos, 1),
+            hrv_rmssd          = round(hrv_rmssd, 1),
         )
 
     # ─── Oturum ──────────────────────────────────────────────────────────────
@@ -1026,6 +1029,7 @@ class PoseAnalyzer:
         self._sitting_start = 0.0
         self.reset_calibration()
         self._hrv.reset()
+        self._hrv_rmssd = -1.0
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
