@@ -143,28 +143,13 @@ class HRVAnalyzer:
         rgb_data = np.array(self._rgb_buffer)
         times    = np.array(self._time_buffer)
 
-        # 1. CHROM + CIELAB a* füzyonu
+        # 1. CHROM sinyali
         try:
-            S_chrom = self._chrom_signal(rgb_data)
-            a_star  = self._rgb_to_astar(rgb_data)
-
-            # a* detrend
-            t_idx  = np.arange(len(a_star))
-            a_star = a_star - np.polyval(np.polyfit(t_idx, a_star, 1), t_idx)
-
-            # Normalize
-            if a_star.std() > 1e-6:
-                a_star = (a_star - a_star.mean()) / a_star.std()
-            if S_chrom.std() > 1e-6:
-                S_chrom = (S_chrom - S_chrom.mean()) / S_chrom.std()
-
-            # Füzyon
-            S = 0.6 * S_chrom + 0.4 * a_star
-
+            S = self._chrom_signal(rgb_data)
         except Exception as e:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=-1, reliable=False,
-                             reason=f"Sinyal hatası: {str(e)[:20]}")
+                            snr=-1, reliable=False,
+                            reason=f"CHROM hatası: {str(e)[:20]}")
 
         # 2. SNR kontrolü
         snr = float(np.var(S) / (np.var(np.diff(S)) + 1e-6))
