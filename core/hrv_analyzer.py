@@ -143,6 +143,15 @@ class HRVAnalyzer:
         rgb_data = np.array(self._rgb_buffer)
         times    = np.array(self._time_buffer)
 
+        # Kayan pencere — son 20 sn kullan
+        duration_all = times[-1] - times[0]
+        if duration_all > 20.0:
+            cutoff_time = times[-1] - 20.0
+            mask = times >= cutoff_time
+            rgb_data = rgb_data[mask]
+            times    = times[mask]
+
+
         # 1. CHROM sinyali
         try:
             S = self._chrom_signal(rgb_data)
