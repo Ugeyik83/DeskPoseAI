@@ -27,9 +27,9 @@ class HRVAnalyzer:
     TARGET_FS  = 100.0
     MIN_PEAKS  = 10
     MIN_SNR    = 2.0
-    MIN_FRAMES = 200
+    MIN_FRAMES = 250
 
-    def __init__(self, buffer_size: int = 300):
+    def __init__(self, buffer_size: int = 500):
         self._rgb_buffer:  deque = deque(maxlen=buffer_size)
         self._time_buffer: deque = deque(maxlen=buffer_size)
 
