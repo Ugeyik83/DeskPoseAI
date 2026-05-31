@@ -556,7 +556,18 @@ if ctx.state.playing and ctx.video_processor:
         else:
             perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#3fb950", f"{pc:.1f}", "%", "Normal uyanıklık", pc
 
-
+        # HRV
+        hrv = metrics.hrv_rmssd
+        if hrv < 0:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#8b949e", "Ölçülüyor", "", "~2 dk sonra aktif", None
+        elif hrv < 20:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#f85149", f"{hrv:.0f}", "ms", "Çok düşük — yüksek stres", hrv / 100 * 100
+        elif hrv < 40:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#d29922", f"{hrv:.0f}", "ms", "Düşük — stres/yorgunluk", hrv / 100 * 100
+        elif hrv <= 100:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#3fb950", f"{hrv:.0f}", "ms", "Normal (20–100ms)", hrv / 100 * 100
+        else:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#58a6ff", f"{hrv:.0f}", "ms", "Yüksek — iyi toparlanma", 100.0
 
         # Ekran mesafesi
         d = metrics.screen_distance
@@ -596,6 +607,8 @@ if ctx.state.playing and ctx.video_processor:
                           blink_color, prog_pct=blink_prog)
                 + _metric("PERCLOS (Göz Kapalı %)", perc_text, perc_unit, perc_desc,
                           perc_color, prog_pct=perc_prog)
+                + _metric("HRV — RMSSD", hrv_text, hrv_unit, hrv_desc,
+                          hrv_color, prog_pct=hrv_prog)
                 + _metric("Baş Eğim Açısı (Roll)",
                           str(metrics.head_tilt_angle), "°",
                           "arctan(Δy/Δx) — yana dönüşle karışabilir",
