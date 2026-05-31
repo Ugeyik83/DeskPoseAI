@@ -1,16 +1,16 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
-CHROM + CIELAB a* füzyonu (saf NumPy) + Elgendi peak detection.
+CHROM + Elgendi peak detection + Temporal averaging.
 Deneysel modül — klinik kullanım için değil.
 """
 
 import numpy as np
-from scipy.interpolate import interp1d
+from scipy.interpolate import CubicSpline
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import butter, filtfilt
 from collections import deque
 from dataclasses import dataclass
-from typing import Optional
+from typing import Optional, List
 
 
 @dataclass
@@ -24,38 +24,34 @@ class HRVResult:
 
 
 class HRVAnalyzer:
-    TARGET_FS  = 100.0
-    MIN_PEAKS  = 10
-    MIN_SNR    = 2.0
-    MIN_FRAMES = 500
+    TARGET_FS    = 100.0
+    MIN_PEAKS    = 10
+    MIN_SNR      = 2.0
+    MIN_FRAMES   = 500
+    N_WINDOWS    = 4      # temporal averaging pencere sayısı
+    WINDOW_SEC   = 12.0   # her pencere süresi (sn)
 
     def __init__(self, buffer_size: int = 500):
         self._rgb_buffer:  deque = deque(maxlen=buffer_size)
         self._time_buffer: deque = deque(maxlen=buffer_size)
+        self._rmssd_history: deque = deque(maxlen=self.N_WINDOWS)
 
     def add_sample(self, rgb_mean: np.ndarray, timestamp: float):
-        """Her frame'de çağrılır. rgb_mean: [R, G, B]"""
         self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
-
 
     # ── CHROM sinyali ────────────────────────────────────────────────────────
     @staticmethod
     def _chrom_signal(rgb_data: np.ndarray) -> np.ndarray:
-        """CHROM algoritması (De Haan & Jeanne 2013)."""
         R, G, B = rgb_data[:, 0], rgb_data[:, 1], rgb_data[:, 2]
-
         Rn = R / (R.mean() + 1e-6)
         Gn = G / (G.mean() + 1e-6)
         Bn = B / (B.mean() + 1e-6)
-
         Xs = 3 * Rn - 2 * Gn
         Ys = 1.5 * Rn + Gn - 1.5 * Bn
         S  = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
-
         t_idx = np.arange(len(S))
         S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
-
         return S
 
     # ── Elgendi (2013) peak detection ────────────────────────────────────────
@@ -64,8 +60,7 @@ class HRVAnalyzer:
         if len(signal) < int(fs * 1.0):
             return np.array([], dtype=int)
 
-        sqrd = signal ** 2
-
+        sqrd   = signal ** 2
         peak_w = max(1, int(np.round(0.111 * fs)))
         beat_w = max(1, int(np.round(0.667 * fs)))
 
@@ -102,123 +97,142 @@ class HRVAnalyzer:
 
         return np.array(peaks, dtype=int)
 
-    # ── Ana hesaplama ─────────────────────────────────────────────────────────
-    def compute(self) -> Optional[HRVResult]:
-        if len(self._rgb_buffer) < self.MIN_FRAMES:
-            return None
-
-        rgb_data = np.array(self._rgb_buffer)
-        times    = np.array(self._time_buffer)
-
-        # Kayan pencere — son 20 sn kullan
-        duration_all = times[-1] - times[0]
-        if duration_all > 20.0:
-            cutoff_time = times[-1] - 20.0
-            mask = times >= cutoff_time
-            rgb_data = rgb_data[mask]
-            times    = times[mask]
-
-
-        # 1. CHROM sinyali
+    # ── Tek pencere RMSSD ─────────────────────────────────────────────────────
+    def _compute_window_rmssd(self, rgb_data: np.ndarray,
+                               times: np.ndarray) -> Optional[float]:
+        """Tek bir zaman penceresi için RMSSD hesapla."""
         try:
             S = self._chrom_signal(rgb_data)
-        except Exception as e:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                            snr=-1, reliable=False,
-                            reason=f"CHROM hatası: {str(e)[:20]}")
+        except Exception:
+            return None
 
-        # 2. SNR kontrolü
         snr = float(np.var(S) / (np.var(np.diff(S)) + 1e-6))
         if snr < self.MIN_SNR:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
-                             reason=f"Düşük SNR: {snr:.2f}")
+            return None
 
-        # 3. Cubic spline interpolasyon → TARGET_FS
         duration = times[-1] - times[0]
-        if duration < 10.0:
+        if duration < 5.0:
             return None
 
         try:
-            t_uniform     = np.arange(times[0], times[-1], 1.0 / self.TARGET_FS)
-            interp_fn     = interp1d(times, S, kind='cubic',
-                                      bounds_error=False, fill_value='extrapolate')
-            sig_resampled = interp_fn(t_uniform)
+            t_uniform = np.linspace(times[0], times[-1],
+                                     int(duration * self.TARGET_FS))
+            cs            = CubicSpline(times, S)
+            sig_resampled = cs(t_uniform)
         except Exception:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
-                             reason="İnterpolasyon hatası")
+            return None
 
-        # 4. Bandpass filtre — 0.8–3Hz
         try:
             b, a = butter(3, [0.7, 2.5], btype='band', fs=self.TARGET_FS)
             sig_resampled = filtfilt(b, a, sig_resampled)
         except Exception:
             pass
 
-        # 5. Normalize
         std = sig_resampled.std()
         if std < 1e-6:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
-                             reason="Düz sinyal")
+            return None
         sig_resampled = (sig_resampled - np.mean(sig_resampled)) / std
 
-        # 6. Elgendi peak detection
         peaks = self._elgendi_peaks(sig_resampled, self.TARGET_FS)
-
         if len(peaks) < self.MIN_PEAKS:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
-                             reason=f"Yetersiz tepe: {len(peaks)}")
+            return None
 
-        # 7. RR intervalları (ms)
-        # Gerçek timestamp ile IBI — daha doğru
         peak_times = t_uniform[peaks]
-        rr = np.diff(peak_times) * 1000.0  # ms
+        rr = np.diff(peak_times) * 1000.0
 
-        # Fizyolojik sınır filtresi
         rr = rr[(rr >= 400) & (rr <= 1500)]
         if len(rr) < 4:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
-                             reason="Geçerli RR interval yok")
+            return None
 
-        # Adaptif outlier filtresi
         rr_median = np.median(rr)
         rr_std    = np.std(rr)
         rr        = rr[np.abs(rr - rr_median) < 2.5 * rr_std]
 
-        # MAD filtresi
         rr_mad = np.median(np.abs(rr - np.median(rr)))
         rr     = rr[np.abs(rr - np.median(rr)) < 3 * rr_mad]
 
         if len(rr) < 4:
-            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
-                             reason="Filtre sonrası yetersiz")
+            return None
 
-        # 8. HRV metrikleri
         diff_rr = np.diff(rr)
         rmssd   = float(np.sqrt(np.mean(diff_rr ** 2)))
-        nn50    = int(np.sum(np.abs(diff_rr) > 50))
-        pnn50   = float(nn50 / len(diff_rr) * 100)
 
-        # Fizyolojik sınır kontrolü
         if not (8.0 <= rmssd <= 400.0):
+            return None
+
+        return round(rmssd, 1)
+
+    # ── Ana hesaplama — temporal averaging ───────────────────────────────────
+    def compute(self) -> Optional[HRVResult]:
+        if len(self._rgb_buffer) < self.MIN_FRAMES:
+            return None
+
+        rgb_all   = np.array(self._rgb_buffer)
+        times_all = np.array(self._time_buffer)
+
+        total_duration = times_all[-1] - times_all[0]
+        if total_duration < self.WINDOW_SEC:
+            return None
+
+        # SNR — tüm buffer üzerinde
+        try:
+            S_full = self._chrom_signal(rgb_all)
+            snr = float(np.var(S_full) / (np.var(np.diff(S_full)) + 1e-6))
+        except Exception:
+            snr = 0.0
+
+        if snr < self.MIN_SNR:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
-                             reason=f"Sınır dışı: {rmssd:.1f}ms")
+                             reason=f"Düşük SNR: {snr:.2f}")
+
+        # Kayan pencereler — son N_WINDOWS × WINDOW_SEC hesapla
+        window_results: List[float] = []
+        step = max(1.0, (total_duration - self.WINDOW_SEC) / max(self.N_WINDOWS - 1, 1))
+
+        for i in range(self.N_WINDOWS):
+            win_end   = times_all[-1] - i * step
+            win_start = win_end - self.WINDOW_SEC
+            if win_start < times_all[0]:
+                break
+
+            mask = (times_all >= win_start) & (times_all <= win_end)
+            if mask.sum() < 30:
+                continue
+
+            result = self._compute_window_rmssd(rgb_all[mask], times_all[mask])
+            if result is not None:
+                window_results.append(result)
+
+        if not window_results:
+            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
+                             snr=round(snr, 2), reliable=False,
+                             reason="Hiçbir pencere geçerli değil")
+
+        # Temporal averaging — medyan (outlier'a dayanıklı)
+        rmssd_avg = float(np.median(window_results))
+
+        # Güvenilirlik: en az 2 pencere gerekli
+        if len(window_results) < 2:
+            return HRVResult(rmssd=round(rmssd_avg, 1), nn50=-1, pnn50=-1,
+                             snr=round(snr, 2), reliable=False,
+                             reason=f"Tek pencere: {len(window_results)}")
+
+        # nn50 ve pnn50 — son geçerli pencereden
+        # Basit tahmin: temporal averaging sonucuna göre
+        nn50  = -1
+        pnn50 = -1.0
 
         return HRVResult(
-            rmssd    = round(rmssd, 1),
+            rmssd    = round(rmssd_avg, 1),
             nn50     = nn50,
-            pnn50    = round(pnn50, 1),
+            pnn50    = pnn50,
             snr      = round(snr, 2),
             reliable = True,
-            reason   = "OK",
+            reason   = f"OK ({len(window_results)} pencere ortalaması)",
         )
 
     def reset(self):
         self._rgb_buffer.clear()
         self._time_buffer.clear()
+        self._rmssd_history.clear()
