@@ -128,18 +128,19 @@ class HRVAnalyzer:
             np.polyfit(t_idx, sig_resampled, 1), t_idx)
 
         # 3.5 Wavelet alt bant seçimi — WaveHRV yaklaşımı
+
         try:
             from scipy.signal import cwt, morlet2
             widths = np.arange(1, 40)
             cwtmatr = cwt(sig_resampled, morlet2, widths)
-            # 100Hz'de kardiyak bant: 0.7–3Hz → width indeksi 8–45 arası
             lo_idx = max(0, int(self.TARGET_FS / (3.0 * 2 * np.pi)))
             hi_idx = min(len(widths), int(self.TARGET_FS / (0.7 * 2 * np.pi)))
             cardiac_rows = cwtmatr[lo_idx:hi_idx, :]
             if cardiac_rows.shape[0] > 0:
-                sig_resampled = np.mean(np.abs(cardiac_rows), axis=0)
+                # np.abs yok — gerçek sinyal değerlerini al
+                sig_resampled = np.mean(cardiac_rows, axis=0)
         except Exception:
-            pass  # başarısız olursa orijinal sinyal devam eder
+            pass
 
         # 4. Bandpass filtre — 0.7–4Hz hareket artefaktı bastırma
         try:
