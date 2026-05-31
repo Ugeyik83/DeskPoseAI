@@ -78,7 +78,7 @@ class HRVAnalyzer:
         starts, ends = starts[:min_len], ends[:min_len]
 
         # Her blokta maksimum noktayı bul
-        min_delay = int(0.5 * fs)
+        min_delay = int(0.6 * fs)
         peaks = []
         last  = -min_delay
 
