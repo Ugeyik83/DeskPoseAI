@@ -827,6 +827,7 @@ class PoseAnalyzer:
                     self._hrv.add_sample(rgb_sample, now)
 
                     # Sinyal grafiği — her frame'de CHROM anlık hesapla
+                    
                     if len(self._rppg_buffer) >= 30:
                         try:
                             data = np.array([s[0] for s in list(self._rppg_buffer)[-30:]])
@@ -836,8 +837,10 @@ class PoseAnalyzer:
                             Bn = B/(B.mean()+1e-6)
                             Xs = 3*Rn - 2*Gn
                             Ys = 1.5*Rn + Gn - 1.5*Bn
-                            s_val = Xs[-1] - (Xs.std()/(Ys.std()+1e-6)) * Ys[-1]
-                            self._chrom_s_history.append(float(s_val))
+                            S  = Xs - (Xs.std()/(Ys.std()+1e-6)) * Ys
+                            t_idx = np.arange(len(S))
+                            S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
+                            self._chrom_s_history.append(float(S[-1]))
                         except Exception:
                             pass
 
