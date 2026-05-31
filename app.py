@@ -554,16 +554,10 @@ if ctx.state.playing and ctx.video_processor:
 
         hrv = metrics.hrv_rmssd
         if hrv < 0:
-            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#8b949e", "Ölçülüyor", "", "~2 dk sonra aktif", None
-        elif hrv < 20:
-            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#f85149", f"{hrv:.0f}", "ms", "Çok düşük — yüksek stres", hrv / 100 * 100
-        elif hrv < 40:
-            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#d29922", f"{hrv:.0f}", "ms", "Düşük — stres/yorgunluk", hrv / 100 * 100
-        elif hrv <= 100:
-            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#3fb950", f"{hrv:.0f}", "ms", "Normal (20–100ms)", hrv / 100 * 100
-        else:
-            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#58a6ff", f"{hrv:.0f}", "ms", "Deneysel — düşük güvenilirlik", 100.0
-
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#484f58", "Deneysel", "", "Masaüstü uygulamada aktif olacak", None
+        elif hrv <= 400:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#484f58", f"{hrv:.0f}", "ms", "Deneysel — düşük güvenilirlik", None
+        
         d = metrics.screen_distance
         if d < 0:
             dist_color, dist_text, dist_unit, dist_desc, dist_prog = "#8b949e", "Ölçülüyor", "", "Kalibrasyon sonrası daha doğru", None
