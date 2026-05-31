@@ -496,15 +496,13 @@ if ctx.state.playing and ctx.video_processor:
 
             # CHROM sinyal grafiği — kamera altında
             if hasattr(processor.analyzer, '_chrom_s_history') and \
-               len(processor.analyzer._chrom_s_history) > 10:
-                signal_data = list(processor.analyzer._chrom_s_history)
-                signal_ph.markdown(
-                    '<div class="pg-label" style="margin-top:8px;">CHROM BVP SİNYALİ</div>',
-                    unsafe_allow_html=True)
-                signal_ph.line_chart(
-                    pd.DataFrame(signal_data, columns=["BVP"]),
-                    height=120,
-                    use_container_width=True,
+                len(processor.analyzer._chrom_s_history) > 10:
+                    signal_data = list(processor.analyzer._chrom_s_history)
+                    signal_ph.line_chart(
+                        pd.DataFrame(signal_data, columns=["BVP"]),
+                        height=120,
+                        use_container_width=True,
+        
                 )
 
         # ── Metrik renkleri ───────────────────────────────────────────────────
