@@ -816,7 +816,8 @@ class PoseAnalyzer:
                 rgb_sample = self._get_forehead_roi(face_lm, frame_bgr)
                 if rgb_sample is not None:
                     self._rppg_buffer.append((rgb_sample, now))
-                    #self._hrv.add_sample(rgb_sample, now)  # ← bunu ekle
+                    if self._rppg_frame_count % 3 == 0:   # her 3 frame'de bir — HRV için yeterli
+                        self._hrv.add_sample(rgb_sample, now)
 
             self._rppg_frame_count += 1
             if self._rppg_frame_count >= RPPG_UPDATE_EVERY:

@@ -29,7 +29,7 @@ class HRVAnalyzer:
     MIN_SNR    = 4.0     # minimum sinyal/gürültü oranı
     MIN_FRAMES = 200     # minimum buffer (~13 sn @15fps)
 
-    def __init__(self, buffer_size: int = 450):
+    def __init__(self, buffer_size: int = 300):
         self._green_buffer: deque = deque(maxlen=buffer_size)
         self._time_buffer:  deque = deque(maxlen=buffer_size)
 
