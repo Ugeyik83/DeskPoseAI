@@ -543,7 +543,10 @@ if ctx.state.playing and ctx.video_processor:
             perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#3fb950", f"{pc:.1f}", "%", "Normal uyanıklık", pc
 
         hrv = metrics.hrv_rmssd
-        hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog =  "#484f58", "Deneysel", "ms", "Masaüstü uygulamada aktif — webcam sıkıştırması sinyal kalitesini düşürüyor", None 
+        if hrv < 0:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#484f58", "Ölçülüyor", "", "~2 dk sonra aktif", None
+        else:
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#484f58", f"{hrv:.0f}", "ms", "Deneysel — düşük güvenilirlik", None
         
         d = metrics.screen_distance
         if d < 0:
