@@ -27,9 +27,9 @@ class HRVAnalyzer:
     TARGET_FS  = 100.0
     MIN_PEAKS  = 10
     MIN_SNR    = 2.0
-    MIN_FRAMES = 250
+    MIN_FRAMES = 600
 
-    def __init__(self, buffer_size: int = 500):
+    def __init__(self, buffer_size: int = 600):
         self._rgb_buffer:  deque = deque(maxlen=buffer_size)
         self._time_buffer: deque = deque(maxlen=buffer_size)
 
@@ -200,7 +200,7 @@ class HRVAnalyzer:
         rr = np.diff(peaks) / self.TARGET_FS * 1000.0
 
         # Fizyolojik sınır filtresi
-        rr = rr[(rr >= 400) & (rr <= 1000)]
+        rr = rr[(rr >= 400) & (rr <= 1500)]
         if len(rr) < 4:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
