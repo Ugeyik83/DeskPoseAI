@@ -1,6 +1,6 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
-CHROM + CIELAB a* füzyonu + Elgendi peak detection.
+CHROM + CIELAB a* füzyonu (saf NumPy) + Elgendi peak detection.
 Deneysel modül — klinik kullanım için değil.
 """
 
@@ -11,12 +11,6 @@ from scipy.signal import butter, filtfilt
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
-
-try:
-    from skimage.color import rgb2lab
-    SKIMAGE_AVAILABLE = True
-except ImportError:
-    SKIMAGE_AVAILABLE = False
 
 
 @dataclass
@@ -44,15 +38,38 @@ class HRVAnalyzer:
         self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
 
-    # ── CIELAB a* dönüşümü ───────────────────────────────────────────────────
+    # ── CIELAB a* dönüşümü — saf NumPy ──────────────────────────────────────
     @staticmethod
     def _rgb_to_astar(rgb_data: np.ndarray) -> np.ndarray:
         """RGB → CIELAB a* kanalı. Hareket artefaktına daha dirençli."""
         rgb_norm = np.clip(rgb_data / 255.0, 0, 1)
-        a_star = np.zeros(len(rgb_norm))
-        for i, px in enumerate(rgb_norm):
-            lab = rgb2lab(px.reshape(1, 1, 3))
-            a_star[i] = lab[0, 0, 1]
+
+        # sRGB → linear RGB
+        mask   = rgb_norm > 0.04045
+        linear = np.where(mask,
+                          ((rgb_norm + 0.055) / 1.055) ** 2.4,
+                          rgb_norm / 12.92)
+
+        # linear RGB → XYZ (D65)
+        M = np.array([
+            [0.4124564, 0.3575761, 0.1804375],
+            [0.2126729, 0.7151522, 0.0721750],
+            [0.0193339, 0.1191920, 0.9503041]
+        ])
+        xyz = linear @ M.T
+
+        # XYZ → LAB
+        xyz_n = np.array([0.95047, 1.00000, 1.08883])
+        xyz_r = xyz / xyz_n
+
+        epsilon = 0.008856
+        kappa   = 903.3
+        f = np.where(xyz_r > epsilon,
+                     xyz_r ** (1.0 / 3.0),
+                     (kappa * xyz_r + 16.0) / 116.0)
+
+        # a* = 500 * (f_x - f_y)
+        a_star = 500.0 * (f[:, 0] - f[:, 1])
         return a_star
 
     # ── CHROM sinyali ────────────────────────────────────────────────────────
@@ -129,18 +146,20 @@ class HRVAnalyzer:
         # 1. CHROM + CIELAB a* füzyonu
         try:
             S_chrom = self._chrom_signal(rgb_data)
+            a_star  = self._rgb_to_astar(rgb_data)
 
-            if SKIMAGE_AVAILABLE:
-                a_star = self._rgb_to_astar(rgb_data)
-                t_idx  = np.arange(len(a_star))
-                a_star = a_star - np.polyval(np.polyfit(t_idx, a_star, 1), t_idx)
-                if a_star.std() > 1e-6:
-                    a_star = (a_star - a_star.mean()) / a_star.std()
-                if S_chrom.std() > 1e-6:
-                    S_chrom = (S_chrom - S_chrom.mean()) / S_chrom.std()
-                S = 0.6 * S_chrom + 0.4 * a_star
-            else:
-                S = S_chrom
+            # a* detrend
+            t_idx  = np.arange(len(a_star))
+            a_star = a_star - np.polyval(np.polyfit(t_idx, a_star, 1), t_idx)
+
+            # Normalize
+            if a_star.std() > 1e-6:
+                a_star = (a_star - a_star.mean()) / a_star.std()
+            if S_chrom.std() > 1e-6:
+                S_chrom = (S_chrom - S_chrom.mean()) / S_chrom.std()
+
+            # Füzyon
+            S = 0.6 * S_chrom + 0.4 * a_star
 
         except Exception as e:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
@@ -196,7 +215,7 @@ class HRVAnalyzer:
         rr = np.diff(peaks) / self.TARGET_FS * 1000.0
 
         # Fizyolojik sınır filtresi
-        rr = rr[(rr >= 400) & (rr <= 1200)]
+        rr = rr[(rr >= 400) & (rr <= 1000)]
         if len(rr) < 4:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
