@@ -105,7 +105,7 @@ class HRVAnalyzer:
         ma_peak = uniform_filter1d(sqrd, size=peak_w)
         ma_beat = uniform_filter1d(sqrd, size=beat_w)
 
-        offset = 0.02 * np.mean(sqrd)
+        offset = 0.05 * np.mean(sqrd)
         thresh = ma_beat + offset
 
         blocks = (ma_peak > thresh).astype(int)
