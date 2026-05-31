@@ -63,7 +63,7 @@ class HRVAnalyzer:
 
         # 2. Cubic spline interpolasyon → TARGET_FS (100Hz)
         duration = times[-1] - times[0]
-        if duration <= 1.0:
+        if duration <= 5.0:
             return None
 
         t_uniform = np.arange(times[0], times[-1], 1.0 / self.TARGET_FS)
@@ -80,7 +80,8 @@ class HRVAnalyzer:
         try:
             ppg_clean = nk.ppg_clean(
                 signal_resampled,
-                sampling_rate=int(self.TARGET_FS)
+                sampling_rate=int(self.TARGET_FS),
+                method="elgendi"
             )
             peaks_info = nk.ppg_findpeaks(
                 ppg_clean,
@@ -105,7 +106,7 @@ class HRVAnalyzer:
                 sampling_rate=int(self.TARGET_FS)
             )
             rmssd = float(hrv_df["HRV_RMSSD"].values[0])
-            nn50  = int(hrv_df["HRV_pNN50"].values[0] * len(peaks) / 100)
+            nn50  = int(hrv_df["HRV_NN50"].values[0])
             pnn50 = float(hrv_df["HRV_pNN50"].values[0])
         except Exception as e:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
