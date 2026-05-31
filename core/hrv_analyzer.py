@@ -176,7 +176,7 @@ class HRVAnalyzer:
         pnn50   = float(nn50 / len(diff_rr) * 100)
 
         # Fizyolojik sınır kontrolü
-        if not (5.0 <= rmssd <= 150.0):
+        if not (5.0 <= rmssd <= 250.0):
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Sınır dışı: {rmssd:.1f}ms")
