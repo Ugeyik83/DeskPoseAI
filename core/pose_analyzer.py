@@ -175,7 +175,10 @@ DIST_GOOD_LO    = 50.0    # 50-100 cm yeşil
 DIST_GOOD_HI    = 100.0
 DIST_WARN_FAR   = 100.0   # > 100 cm sarı
 
-RPPG_BUFFER_FRAMES = 450
+RPPG_BUFFER_FRAMES     = 450   # maksimum buffer
+RPPG_BUFFER_MIN        = 150   # minimum hesaplama için (~10 sn)
+RPPG_SNR_GOOD          = 3.0   # iyi sinyal eşiği
+
 RPPG_UPDATE_EVERY  = 60
 RPPG_BPM_LOW       = 42.0
 RPPG_BPM_HIGH      = 150.0
@@ -542,7 +545,8 @@ class PoseAnalyzer:
         CHROM algoritması — Welch PSD ile BPM tahmini.
         Returns: BPM > 0, veya -1.0 (yetersiz veri), -3.0 (zayıf sinyal)
         """
-        if len(self._rppg_buffer) < RPPG_BUFFER_FRAMES:
+        buf_len = len(self._rppg_buffer)
+        if buf_len < RPPG_BUFFER_MIN:
             return -1.0
 
         try:
@@ -594,6 +598,14 @@ class PoseAnalyzer:
             snr = peak_power / noise_floor
             if snr < RPPG_SNR_THRESH:
                 return -3.0
+
+            # SNR yüksekse buffer'ı kısalt — gereksiz gecikmeyi azalt
+            if snr >= RPPG_SNR_GOOD and buf_len > 200:
+                # Son 200 kare yeterliyse eski veriyi temizle
+                recent = list(self._rppg_buffer)[-200:]
+                self._rppg_buffer.clear()
+                for item in recent:
+                    self._rppg_buffer.append(item)
 
             # BPM hesapla — Gaussian ağırlıklı
             peak_idx = int(np.argmax(psd_band))
@@ -790,7 +802,12 @@ class PoseAnalyzer:
             raw_dist = self._compute_screen_distance(iris_px, w)
             screen_distance = self._f_dist.update(raw_dist, now) if raw_dist > 0 else -1.0
 
-            motion_suppressed = self.recent_movement > 0.01
+            # Dinamik hareket eşiği — sinyal varyansına göre adaptif
+            rppg_variance = float(np.var([s[0][1] for s in self._rppg_buffer])) if len(self._rppg_buffer) > 30 else 0.0
+            motion_threshold = 0.008 + min(rppg_variance * 0.5, 0.02)
+            motion_suppressed = self.recent_movement > motion_threshold
+            
+
             if not motion_suppressed:
                 rgb_sample = self._get_forehead_roi(face_lm, frame_bgr)
                 if rgb_sample is not None:
