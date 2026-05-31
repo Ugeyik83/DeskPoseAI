@@ -26,7 +26,7 @@ class HRVAnalyzer:
     TARGET_FS   = 100.0   # interpolasyon hedef frekansı (Hz)
     BANDPASS_LO = 0.7     # Hz (~42 BPM)
     BANDPASS_HI = 4.0     # Hz (~240 BPM)
-    MIN_PEAKS   = 8       # güvenilir sonuç için minimum tepe sayısı
+    MIN_PEAKS   = 12       # güvenilir sonuç için minimum tepe sayısı
     MIN_SNR     = 2.0     # minimum sinyal/gürültü oranı
 
     def __init__(self, buffer_size: int = 450):
@@ -80,8 +80,9 @@ class HRVAnalyzer:
         # 5. Peak detection
         min_distance = int(self.TARGET_FS * 0.4)  # min 400ms arası (~150 BPM max)
         peaks, props = find_peaks(signal_filtered,
-                                   distance=min_distance,
-                                   prominence=np.std(signal_filtered) * 0.5)
+                                distance=min_distance,
+                                prominence=np.std(signal_filtered) * 0.8,
+                                height=np.mean(signal_filtered))
 
         if len(peaks) < self.MIN_PEAKS:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
@@ -92,7 +93,7 @@ class HRVAnalyzer:
         rr_intervals = np.diff(peaks) / self.TARGET_FS * 1000.0
 
         # Fizyolojik sınır filtresi (300–2000ms arası geçerli)
-        rr_intervals = rr_intervals[(rr_intervals >= 300) & (rr_intervals <= 2000)]
+        rr_intervals = rr_intervals[(rr_intervals >= 400) & (rr_intervals <= 1200)]
 
         if len(rr_intervals) < 4:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
