@@ -1,6 +1,6 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
-CHROM algoritması + Elgendi peak detection — saf NumPy/SciPy.
+CHROM + CIELAB a* füzyonu + Elgendi peak detection.
 Deneysel modül — klinik kullanım için değil.
 """
 
@@ -11,6 +11,12 @@ from scipy.signal import butter, filtfilt
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
+
+try:
+    from skimage.color import rgb2lab
+    SKIMAGE_AVAILABLE = True
+except ImportError:
+    SKIMAGE_AVAILABLE = False
 
 
 @dataclass
@@ -30,7 +36,6 @@ class HRVAnalyzer:
     MIN_FRAMES = 200
 
     def __init__(self, buffer_size: int = 300):
-        # Ham RGB buffer — CHROM burada hesaplanacak
         self._rgb_buffer:  deque = deque(maxlen=buffer_size)
         self._time_buffer: deque = deque(maxlen=buffer_size)
 
@@ -39,28 +44,31 @@ class HRVAnalyzer:
         self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
 
-    # ── CHROM sinyali çıkarımı ────────────────────────────────────────────────
+    # ── CIELAB a* dönüşümü ───────────────────────────────────────────────────
+    @staticmethod
+    def _rgb_to_astar(rgb_data: np.ndarray) -> np.ndarray:
+        """RGB → CIELAB a* kanalı. Hareket artefaktına daha dirençli."""
+        rgb_norm = np.clip(rgb_data / 255.0, 0, 1)
+        a_star = np.zeros(len(rgb_norm))
+        for i, px in enumerate(rgb_norm):
+            lab = rgb2lab(px.reshape(1, 1, 3))
+            a_star[i] = lab[0, 0, 1]
+        return a_star
+
+    # ── CHROM sinyali ────────────────────────────────────────────────────────
     @staticmethod
     def _chrom_signal(rgb_data: np.ndarray) -> np.ndarray:
-        """
-        CHROM algoritması (De Haan & Jeanne 2013).
-        rgb_data: (N, 3) — R, G, B sütunları
-        """
+        """CHROM algoritması (De Haan & Jeanne 2013)."""
         R, G, B = rgb_data[:, 0], rgb_data[:, 1], rgb_data[:, 2]
 
-        # Normalize
         Rn = R / (R.mean() + 1e-6)
         Gn = G / (G.mean() + 1e-6)
         Bn = B / (B.mean() + 1e-6)
 
-        # Krominans
         Xs = 3 * Rn - 2 * Gn
         Ys = 1.5 * Rn + Gn - 1.5 * Bn
+        S  = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
 
-        # CHROM sinyali
-        S = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
-
-        # Detrend
         t_idx = np.arange(len(S))
         S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
 
@@ -115,16 +123,29 @@ class HRVAnalyzer:
         if len(self._rgb_buffer) < self.MIN_FRAMES:
             return None
 
-        rgb_data = np.array(self._rgb_buffer)   # (N, 3)
+        rgb_data = np.array(self._rgb_buffer)
         times    = np.array(self._time_buffer)
 
-        # 1. CHROM sinyali çıkar
+        # 1. CHROM + CIELAB a* füzyonu
         try:
-            S = self._chrom_signal(rgb_data)
-        except Exception:
+            S_chrom = self._chrom_signal(rgb_data)
+
+            if SKIMAGE_AVAILABLE:
+                a_star = self._rgb_to_astar(rgb_data)
+                t_idx  = np.arange(len(a_star))
+                a_star = a_star - np.polyval(np.polyfit(t_idx, a_star, 1), t_idx)
+                if a_star.std() > 1e-6:
+                    a_star = (a_star - a_star.mean()) / a_star.std()
+                if S_chrom.std() > 1e-6:
+                    S_chrom = (S_chrom - S_chrom.mean()) / S_chrom.std()
+                S = 0.6 * S_chrom + 0.4 * a_star
+            else:
+                S = S_chrom
+
+        except Exception as e:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=-1, reliable=False,
-                             reason="CHROM hatası")
+                             reason=f"Sinyal hatası: {str(e)[:20]}")
 
         # 2. SNR kontrolü
         snr = float(np.var(S) / (np.var(np.diff(S)) + 1e-6))
