@@ -1,6 +1,6 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
-Elgendi (2013) peak detection — saf NumPy/SciPy, bağımlılık yok.
+CHROM algoritması + Elgendi peak detection — saf NumPy/SciPy.
 Deneysel modül — klinik kullanım için değil.
 """
 
@@ -26,16 +26,45 @@ class HRVResult:
 class HRVAnalyzer:
     TARGET_FS  = 100.0
     MIN_PEAKS  = 10
-    MIN_SNR    = 4.0
+    MIN_SNR    = 2.0
     MIN_FRAMES = 200
 
     def __init__(self, buffer_size: int = 300):
-        self._green_buffer: deque = deque(maxlen=buffer_size)
-        self._time_buffer:  deque = deque(maxlen=buffer_size)
+        # Ham RGB buffer — CHROM burada hesaplanacak
+        self._rgb_buffer:  deque = deque(maxlen=buffer_size)
+        self._time_buffer: deque = deque(maxlen=buffer_size)
 
     def add_sample(self, rgb_mean: np.ndarray, timestamp: float):
-        self._green_buffer.append(float(rgb_mean[1]))
+        """Her frame'de çağrılır. rgb_mean: [R, G, B]"""
+        self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
+
+    # ── CHROM sinyali çıkarımı ────────────────────────────────────────────────
+    @staticmethod
+    def _chrom_signal(rgb_data: np.ndarray) -> np.ndarray:
+        """
+        CHROM algoritması (De Haan & Jeanne 2013).
+        rgb_data: (N, 3) — R, G, B sütunları
+        """
+        R, G, B = rgb_data[:, 0], rgb_data[:, 1], rgb_data[:, 2]
+
+        # Normalize
+        Rn = R / (R.mean() + 1e-6)
+        Gn = G / (G.mean() + 1e-6)
+        Bn = B / (B.mean() + 1e-6)
+
+        # Krominans
+        Xs = 3 * Rn - 2 * Gn
+        Ys = 1.5 * Rn + Gn - 1.5 * Bn
+
+        # CHROM sinyali
+        S = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
+
+        # Detrend
+        t_idx = np.arange(len(S))
+        S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
+
+        return S
 
     # ── Elgendi (2013) peak detection ────────────────────────────────────────
     @staticmethod
@@ -51,13 +80,13 @@ class HRVAnalyzer:
         ma_peak = uniform_filter1d(sqrd, size=peak_w)
         ma_beat = uniform_filter1d(sqrd, size=beat_w)
 
-        offset  = 0.02 * np.mean(sqrd)
-        thresh  = ma_beat + offset
+        offset = 0.02 * np.mean(sqrd)
+        thresh = ma_beat + offset
 
-        blocks  = (ma_peak > thresh).astype(int)
-        diff    = np.diff(blocks, prepend=0)
-        starts  = np.where(diff == 1)[0]
-        ends    = np.where(diff == -1)[0]
+        blocks = (ma_peak > thresh).astype(int)
+        diff   = np.diff(blocks, prepend=0)
+        starts = np.where(diff == 1)[0]
+        ends   = np.where(diff == -1)[0]
 
         if len(ends) == 0 or len(starts) == 0:
             return np.array([], dtype=int)
@@ -83,38 +112,41 @@ class HRVAnalyzer:
 
     # ── Ana hesaplama ─────────────────────────────────────────────────────────
     def compute(self) -> Optional[HRVResult]:
-        if len(self._green_buffer) < self.MIN_FRAMES:
+        if len(self._rgb_buffer) < self.MIN_FRAMES:
             return None
 
-        signal = np.array(self._green_buffer)
-        times  = np.array(self._time_buffer)
+        rgb_data = np.array(self._rgb_buffer)   # (N, 3)
+        times    = np.array(self._time_buffer)
 
-        # 1. SNR kontrolü
-        snr = float(np.var(signal) / (np.var(np.diff(signal)) + 1e-6))
+        # 1. CHROM sinyali çıkar
+        try:
+            S = self._chrom_signal(rgb_data)
+        except Exception:
+            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
+                             snr=-1, reliable=False,
+                             reason="CHROM hatası")
+
+        # 2. SNR kontrolü
+        snr = float(np.var(S) / (np.var(np.diff(S)) + 1e-6))
         if snr < self.MIN_SNR:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Düşük SNR: {snr:.2f}")
 
-        # 2. Cubic spline interpolasyon → TARGET_FS
+        # 3. Cubic spline interpolasyon → TARGET_FS
         duration = times[-1] - times[0]
         if duration < 10.0:
             return None
 
         try:
             t_uniform     = np.arange(times[0], times[-1], 1.0 / self.TARGET_FS)
-            interp_fn     = interp1d(times, signal, kind='cubic',
+            interp_fn     = interp1d(times, S, kind='cubic',
                                       bounds_error=False, fill_value='extrapolate')
             sig_resampled = interp_fn(t_uniform)
         except Exception:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason="İnterpolasyon hatası")
-
-        # 3. Detrend
-        t_idx = np.arange(len(sig_resampled))
-        sig_resampled = sig_resampled - np.polyval(
-            np.polyfit(t_idx, sig_resampled, 1), t_idx)
 
         # 4. Bandpass filtre — 0.8–3Hz
         try:
@@ -170,7 +202,7 @@ class HRVAnalyzer:
         pnn50   = float(nn50 / len(diff_rr) * 100)
 
         # Fizyolojik sınır kontrolü
-        if not (8.0 <= rmssd <= 150.0):
+        if not (8.0 <= rmssd <= 110.0):
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Sınır dışı: {rmssd:.1f}ms")
@@ -185,5 +217,5 @@ class HRVAnalyzer:
         )
 
     def reset(self):
-        self._green_buffer.clear()
+        self._rgb_buffer.clear()
         self._time_buffer.clear()
