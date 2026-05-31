@@ -206,7 +206,9 @@ class HRVAnalyzer:
                              reason=f"Yetersiz tepe: {len(peaks)}")
 
         # 7. RR intervalları (ms)
-        rr = np.diff(peaks) / self.TARGET_FS * 1000.0
+        # Gerçek timestamp ile IBI — daha doğru
+        peak_times = t_uniform[peaks]
+        rr = np.diff(peak_times) * 1000.0  # ms
 
         # Fizyolojik sınır filtresi
         rr = rr[(rr >= 400) & (rr <= 1500)]
