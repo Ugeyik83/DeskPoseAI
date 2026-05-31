@@ -203,6 +203,7 @@ class PoseAnalyzer:
         self._perclos_frame_count: int = 0
         self._hrv = HRVAnalyzer()
         self._hrv_rmssd: float = -1.0
+        self._chrom_s_history: deque = deque(maxlen=150)  # son 10 sn @15fps
 
 
         self.pose = self.mp_pose.Pose(
@@ -573,6 +574,10 @@ class PoseAnalyzer:
             # Detrend
             t_idx = np.arange(len(S))
             S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
+            
+            # Sinyal görselleştirme için son değeri kaydet
+            if len(S) > 0:
+                self._chrom_s_history.append(float(S[-1]))
 
             # Gerçek FPS hesapla
             duration = times[-1] - times[0]

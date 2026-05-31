@@ -8,6 +8,7 @@ import time
 import math
 import queue
 import cv2
+import pandas as pd
 import streamlit as st
 from pathlib import Path
 import sys
@@ -54,7 +55,6 @@ st.markdown("""
         color: var(--text);
     }
 
-    /* ── Cards ─────────────────────────────────────────────────── */
     .pg-card {
         background: var(--surface); border: 1px solid var(--border);
         border-radius: var(--r); padding: 14px 16px; margin-bottom: 8px;
@@ -75,14 +75,12 @@ st.markdown("""
     .pg-desc  { font-size: 11px; color: var(--text-sec); margin-top: 5px; }
     .pg-disc  { font-size: 10px; color: var(--text-muted); font-style: italic; margin-top: 3px; }
 
-    /* ── Progress bar ───────────────────────────────────────────── */
     .prog-track {
         height: 4px; background: var(--border-sub);
         border-radius: 2px; margin-top: 9px; overflow: hidden;
     }
     .prog-fill { height: 100%; border-radius: 2px; transition: width 0.35s ease; }
 
-    /* ── Status bar ─────────────────────────────────────────────── */
     .status-bar {
         border-radius: var(--r); padding: 11px 16px;
         font-size: 13px; font-weight: 600; letter-spacing: 0.02em;
@@ -102,7 +100,6 @@ st.markdown("""
         50%       { box-shadow: 0 0 0 6px rgba(248,81,73,0); }
     }
 
-    /* ── Feedback list ──────────────────────────────────────────── */
     .fb-list { margin-top: 6px; }
     .fb-item {
         display: flex; align-items: flex-start; gap: 8px;
@@ -115,7 +112,6 @@ st.markdown("""
         margin-top: 4px; flex-shrink: 0;
     }
 
-    /* ── Badges ─────────────────────────────────────────────────── */
     .badge {
         display: inline-flex; align-items: center;
         padding: 2px 7px; border-radius: 4px;
@@ -126,7 +122,6 @@ st.markdown("""
     .badge-cal { background: var(--good-bg); border: 1px solid var(--good); color: var(--good); }
     .badge-est { background: rgba(72,79,88,0.2); border: 1px solid #484f58; color: var(--text-sec); }
 
-    /* ── Alert log ──────────────────────────────────────────────── */
     .alert-item {
         display: flex; align-items: center; gap: 8px;
         padding: 5px 0; font-size: 11px;
@@ -138,7 +133,6 @@ st.markdown("""
         color: var(--text-muted); font-size: 10px; min-width: 52px;
     }
 
-    /* ── Session stat chips ─────────────────────────────────────── */
     .stat-chips { display: flex; gap: 6px; margin-top: 10px; }
     .stat-chip  {
         flex: 1; text-align: center; padding: 8px 4px;
@@ -150,13 +144,11 @@ st.markdown("""
     }
     .stat-chip-lbl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-sec); }
 
-    /* ── Sidebar section titles ─────────────────────────────────── */
     .sb-title {
         font-size: 10px; font-weight: 700; letter-spacing: 0.1em;
         text-transform: uppercase; color: var(--text-sec); margin: 4px 0 8px;
     }
 
-    /* ── Threshold table ────────────────────────────────────────── */
     .thresh-table { font-size: 11px; width: 100%; border-collapse: collapse; }
     .thresh-table th, .thresh-table td { padding: 5px 6px; border: 1px solid #2a2d3a; text-align: center; }
     .thresh-table th { background: #1a1d27; color: #6b7280; font-weight: 600; }
@@ -271,7 +263,6 @@ with st.sidebar:
         unsafe_allow_html=True)
     st.divider()
 
-    # Kalibrasyon bölümü
     st.markdown('<div class="sb-title">Kalibrasyon</div>', unsafe_allow_html=True)
     st.markdown(
         '<div style="font-size:12px;color:#8b949e;margin-bottom:10px;line-height:1.5;">'
@@ -301,7 +292,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Bildirim ayarları
     st.markdown('<div class="sb-title">Bildirim Ayarları</div>', unsafe_allow_html=True)
     st.session_state.alert_cooldown = st.slider(
         "Bildirim aralığı (sn)", 10, 120, 30, 5,
@@ -312,7 +302,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Loglama
     st.markdown('<div class="sb-title">Oturum Kaydı</div>', unsafe_allow_html=True)
     st.session_state.log_enabled = st.toggle("CSV olarak kaydet", value=True)
     st.session_state.show_roi    = st.toggle("ROI bölgelerini göster (rPPG)", value=False)
@@ -368,6 +357,7 @@ with col_cam:
     feedback_ph         = st.empty()
     posture_alert_ph    = st.empty()
     stationary_alert_ph = st.empty()
+    signal_ph           = st.empty()   # CHROM sinyal grafiği
 
 with col_metrics:
     score_ph   = st.empty()
@@ -381,7 +371,6 @@ with col_metrics:
 if ctx.state.playing and ctx.video_processor:
     processor = ctx.video_processor
 
-    # ── Kalibrasyon ──────────────────────────────────────────────────────────
     if st.session_state.calibrating and not st.session_state.calib_done:
         if not st.session_state.calib_triggered:
             processor.analyzer.reset_calibration()
@@ -414,7 +403,7 @@ if ctx.state.playing and ctx.video_processor:
         if not st.session_state.calib_done and not st.session_state.calibrating:
             if processor.analyzer.baseline.valid:
                 processor.analyzer.reset_calibration()
-                
+
     processor.analyzer.show_roi = st.session_state.show_roi
     metrics = processor.get_latest_metrics()
 
@@ -482,7 +471,6 @@ if ctx.state.playing and ctx.video_processor:
             else '<span class="badge badge-est">EST</span>'
         )
 
-        # ── Kamera altı durum çubuğu ─────────────────────────────────────────
         with col_cam:
             status_ph.markdown(
                 f'<div class="status-bar status-{risk}">'
@@ -506,7 +494,20 @@ if ctx.state.playing and ctx.video_processor:
             else:
                 feedback_ph.empty()
 
-        # ── Metrik renkleri ve değerleri ──────────────────────────────────────
+            # CHROM sinyal grafiği — kamera altında
+            if hasattr(processor.analyzer, '_chrom_s_history') and \
+               len(processor.analyzer._chrom_s_history) > 10:
+                signal_data = list(processor.analyzer._chrom_s_history)
+                signal_ph.markdown(
+                    '<div class="pg-label" style="margin-top:8px;">CHROM BVP SİNYALİ</div>',
+                    unsafe_allow_html=True)
+                signal_ph.line_chart(
+                    pd.DataFrame(signal_data, columns=["BVP"]),
+                    height=120,
+                    use_container_width=True,
+                )
+
+        # ── Metrik renkleri ───────────────────────────────────────────────────
         risk_color  = {"good": "#3fb950", "warning": "#d29922", "critical": "#f85149"}[risk]
         score       = processor.analyzer.get_posture_score()
         score_color = "#3fb950" if score >= 70 else "#d29922" if score >= 40 else "#f85149"
@@ -516,7 +517,6 @@ if ctx.state.playing and ctx.video_processor:
         fhp_label = "FHP Risk Skoru — Kalibre" if metrics.calibration_active else "FHP Risk Skoru — Tahmini"
         fhp_disc  = "Kişisel baseline'a göre" if metrics.calibration_active else "Kalibre et → daha doğru sonuç"
 
-        # Kalp atışı
         hr = metrics.heart_rate
         if hr == -2.0:
             hr_color, hr_text, hr_unit, hr_desc, hr_prog = "#8b949e", "Hareket", "", "Sakin dur — ölçüm devam eder", None
@@ -532,7 +532,6 @@ if ctx.state.playing and ctx.video_processor:
         else:
             hr_color, hr_text, hr_unit, hr_desc, hr_prog = "#f85149", f"{hr:.0f}", "BPM", "Yüksek — stres/yorgunluk olabilir", min((hr - 40) / 120 * 100, 100)
 
-        # Göz kırpma
         br = metrics.blink_rate
         if br < 0:
             blink_color, blink_text, blink_unit, blink_desc, blink_prog = "#8b949e", "Ölçülüyor", "", "60 sn sonra aktif", None
@@ -543,7 +542,6 @@ if ctx.state.playing and ctx.video_processor:
         else:
             blink_color, blink_text, blink_unit, blink_desc, blink_prog = "#3fb950", f"{br:.0f}", "/dk", "Normal (15–20/dk ideal)", min(br / 20 * 100, 100)
 
-        # PERCLOS
         pc = metrics.perclos
         if pc < 0:
             perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#8b949e", "Ölçülüyor", "", "~30 sn sonra aktif", None
@@ -556,7 +554,6 @@ if ctx.state.playing and ctx.video_processor:
         else:
             perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#3fb950", f"{pc:.1f}", "%", "Normal uyanıklık", pc
 
-        # HRV
         hrv = metrics.hrv_rmssd
         if hrv < 0:
             hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#8b949e", "Ölçülüyor", "", "~2 dk sonra aktif", None
@@ -567,9 +564,8 @@ if ctx.state.playing and ctx.video_processor:
         elif hrv <= 100:
             hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#3fb950", f"{hrv:.0f}", "ms", "Normal (20–100ms)", hrv / 100 * 100
         else:
-            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#58a6ff", f"{hrv:.0f}", "ms", "Yüksek — iyi toparlanma", 100.0
+            hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#58a6ff", f"{hrv:.0f}", "ms", "Deneysel — düşük güvenilirlik", 100.0
 
-        # Ekran mesafesi
         d = metrics.screen_distance
         if d < 0:
             dist_color, dist_text, dist_unit, dist_desc, dist_prog = "#8b949e", "Ölçülüyor", "", "Kalibrasyon sonrası daha doğru", None
@@ -582,7 +578,6 @@ if ctx.state.playing and ctx.video_processor:
         else:
             dist_color, dist_text, dist_unit, dist_desc, dist_prog = "#d29922", f"{d:.0f}", "cm", "Çok uzak — öne eğilme riski", min(d / 150 * 100, 100)
 
-        # Hareketsizlik
         stat_min = processor.analyzer.session.stationary_minutes
         if stat_min >= 60:
             stat_color, stat_desc = "#f85149", "Kalk, 2 dk yürü"
@@ -592,7 +587,6 @@ if ctx.state.playing and ctx.video_processor:
             stat_color, stat_desc = "#3fb950", "Normal"
         stat_prog = min(stat_min / 90 * 100, 100)
 
-        # ── Metrik paneli ─────────────────────────────────────────────────────
         with col_metrics:
             score_ph.markdown(_score_ring(score, score_color), unsafe_allow_html=True)
 
@@ -624,7 +618,6 @@ if ctx.state.playing and ctx.video_processor:
                           stat_desc, stat_color, prog_pct=stat_prog),
                 unsafe_allow_html=True)
 
-            # Oturum istatistikleri
             s     = processor.analyzer.session
             total = max(s.total_frames, 1)
             fps   = getattr(processor.analyzer, '_current_fps', 0.0)
@@ -657,7 +650,6 @@ if ctx.state.playing and ctx.video_processor:
                 </div>
             </div>""", unsafe_allow_html=True)
 
-            # Son uyarılar
             if st.session_state.alert_log:
                 rows = ""
                 for a in st.session_state.alert_log[:5]:
