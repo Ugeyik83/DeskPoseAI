@@ -27,7 +27,7 @@ class HRVAnalyzer:
     BANDPASS_LO = 0.7     # Hz (~42 BPM)
     BANDPASS_HI = 4.0     # Hz (~240 BPM)
     MIN_PEAKS   = 12       # güvenilir sonuç için minimum tepe sayısı
-    MIN_SNR     = 2.0     # minimum sinyal/gürültü oranı
+    MIN_SNR     = 3.5     # minimum sinyal/gürültü oranı
 
     def __init__(self, buffer_size: int = 450):
         self._raw_buffer: deque = deque(maxlen=buffer_size)
@@ -99,6 +99,16 @@ class HRVAnalyzer:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=snr, reliable=False,
                              reason="Geçerli RR interval yok")
+
+        # Median absolute deviation filtresi — outlier RR intervalları at
+        rr_median = np.median(rr_intervals)
+        rr_mad = np.median(np.abs(rr_intervals - rr_median))
+        rr_intervals = rr_intervals[np.abs(rr_intervals - rr_median) < 3 * rr_mad]
+
+        if len(rr_intervals) < 4:
+            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
+                            snr=snr, reliable=False,
+                            reason="MAD filtresi sonrası yetersiz interval")
 
         # 7. HRV metrikleri
         diff_rr = np.diff(rr_intervals)
