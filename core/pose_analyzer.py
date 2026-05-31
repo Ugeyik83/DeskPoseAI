@@ -324,6 +324,9 @@ class PoseAnalyzer:
         self._iris_calib_buffer.clear()
         self._calib_ear.clear()
         self._fhp_history.clear()
+        self._perclos_closed_frames = 0
+        self._perclos_frame_count   = 0
+        self._perclos_score         = 0.0
 
     # ─── Visibility gating ───────────────────────────────────────────────────
 
@@ -1031,6 +1034,9 @@ class PoseAnalyzer:
         self.reset_calibration()
         self._hrv.reset()
         self._hrv_rmssd = -1.0
+        self._perclos_closed_frames = 0
+        self._perclos_frame_count   = 0
+        self._perclos_score         = 0.0
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
