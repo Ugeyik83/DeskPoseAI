@@ -38,49 +38,49 @@ class HRVAnalyzer:
         self._time_buffer.append(timestamp)
 
     @staticmethod
-    def _elgendi_peaks(signal: np.ndarray, fs: float) -> np.ndarray:
-        if len(signal) < int(fs * 1.0):
-            return np.array([], dtype=int)
+@staticmethod
+def _elgendi_peaks(signal: np.ndarray, fs: float) -> np.ndarray:
+    if len(signal) < int(fs * 1.0):
+        return np.array([], dtype=int)
 
-        # Orijinal Elgendi — kare alma
-        sqrd = signal ** 2
+    # Kare alma YOK — direkt sinyal kullan (rPPG için daha iyi)
+    sqrd = signal  # veya np.abs(signal)
 
-        peak_w = max(1, int(np.round(0.111 * fs)))
-        beat_w = max(1, int(np.round(0.667 * fs)))
+    peak_w = max(1, int(np.round(0.111 * fs)))
+    beat_w = max(1, int(np.round(0.667 * fs)))
 
-        ma_peak = uniform_filter1d(sqrd, size=peak_w)
-        ma_beat = uniform_filter1d(sqrd, size=beat_w)
+    ma_peak = uniform_filter1d(sqrd, size=peak_w)
+    ma_beat = uniform_filter1d(sqrd, size=beat_w)
 
-        offset = 0.02 * np.mean(sqrd)
-        thresh = ma_beat + offset
+    offset = 0.02 * np.mean(sqrd)
+    thresh = ma_beat + offset
 
-        blocks = (ma_peak > thresh).astype(int)
-        diff   = np.diff(blocks, prepend=0)
-        starts = np.where(diff == 1)[0]
-        ends   = np.where(diff == -1)[0]
+    blocks = (ma_peak > thresh).astype(int)
+    diff   = np.diff(blocks, prepend=0)
+    starts = np.where(diff == 1)[0]
+    ends   = np.where(diff == -1)[0]
 
-        if len(ends) == 0 or len(starts) == 0:
-            return np.array([], dtype=int)
+    if len(ends) == 0 or len(starts) == 0:
+        return np.array([], dtype=int)
 
-        if ends[0] < starts[0]:
-            ends = ends[1:]
-        min_len = min(len(starts), len(ends))
-        starts, ends = starts[:min_len], ends[:min_len]
+    if ends[0] < starts[0]:
+        ends = ends[1:]
+    min_len = min(len(starts), len(ends))
+    starts, ends = starts[:min_len], ends[:min_len]
 
-        # 400ms minimum tepe aralığı
-        min_delay = int(0.4 * fs)
-        peaks = []
-        last  = -min_delay
+    min_delay = int(0.45 * fs)  # 450 ms
+    peaks = []
+    last  = -min_delay
 
-        for s, e in zip(starts, ends):
-            if e <= s:
-                continue
-            peak = s + int(np.argmax(signal[s:e]))
-            if peak - last >= min_delay:
-                peaks.append(peak)
-                last = peak
+    for s, e in zip(starts, ends):
+        if e <= s:
+            continue
+        peak = s + int(np.argmax(signal[s:e]))
+        if peak - last >= min_delay:
+            peaks.append(peak)
+            last = peak
 
-        return np.array(peaks, dtype=int)
+    return np.array(peaks, dtype=int)
 
     def compute(self) -> Optional[HRVResult]:
         if len(self._green_buffer) < self.MIN_FRAMES:
