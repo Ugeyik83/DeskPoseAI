@@ -123,12 +123,7 @@ class HRVAnalyzer:
         except Exception:
             return None
 
-        try:
-            b, a = butter(3, [0.7, 2.5], btype='band', fs=self.TARGET_FS)
-            sig_resampled = filtfilt(b, a, sig_resampled)
-        except Exception:
-            pass
-        
+
         # DWT — H.264 sıkıştırma gürültüsü temizleme
         try:
             coeffs = pywt.wavedec(sig_resampled, 'db4', level=4)
@@ -140,6 +135,15 @@ class HRVAnalyzer:
             sig_resampled = pywt.waverec(coeffs_thresh, 'db4')[:len(sig_resampled)]
         except Exception:
             pass
+
+        # Bandpass filtre — DWT'den sonra kalan gürültüyü azaltmak için
+        try:
+            b, a = butter(3, [0.7, 2.5], btype='band', fs=self.TARGET_FS)
+            sig_resampled = filtfilt(b, a, sig_resampled)
+        except Exception:
+            pass
+        
+
 
 
 
