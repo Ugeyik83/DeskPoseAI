@@ -357,7 +357,7 @@ with col_cam:
     feedback_ph         = st.empty()
     posture_alert_ph    = st.empty()
     stationary_alert_ph = st.empty()
-    signal_ph           = st.empty()   # CHROM sinyal grafiği
+
 
 with col_metrics:
     score_ph   = st.empty()
@@ -494,16 +494,6 @@ if ctx.state.playing and ctx.video_processor:
             else:
                 feedback_ph.empty()
 
-            # CHROM sinyal grafiği — kamera altında
-            if hasattr(processor.analyzer, '_chrom_s_history') and \
-                len(processor.analyzer._chrom_s_history) > 10:
-                    signal_data = list(processor.analyzer._chrom_s_history)
-                    signal_ph.line_chart(
-                        pd.DataFrame(signal_data, columns=["BVP"]),
-                        height=120,
-                        use_container_width=True,
-        
-                )
 
         # ── Metrik renkleri ───────────────────────────────────────────────────
         risk_color  = {"good": "#3fb950", "warning": "#d29922", "critical": "#f85149"}[risk]
