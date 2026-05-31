@@ -11,6 +11,7 @@ import mediapipe as mp
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict
+from core.hrv_analyzer import HRVAnalyzer
 import cv2
 from scipy.signal import welch
 import threading
@@ -199,6 +200,8 @@ class PoseAnalyzer:
         self._sitting_start: float = 0.0   # oturma başlangıç zamanı (monotonic)
         self.show_roi: bool = False
         self._perclos_frame_count: int = 0
+        self._hrv = HRVAnalyzer()
+        self._hrv_rmssd: float = -1.0
 
 
         self.pose = self.mp_pose.Pose(
@@ -812,6 +815,7 @@ class PoseAnalyzer:
                 rgb_sample = self._get_forehead_roi(face_lm, frame_bgr)
                 if rgb_sample is not None:
                     self._rppg_buffer.append((rgb_sample, now))
+                    self._hrv.add_sample(rgb_sample, now)  # ← bunu ekle
 
             self._rppg_frame_count += 1
             if self._rppg_frame_count >= RPPG_UPDATE_EVERY:
@@ -822,6 +826,12 @@ class PoseAnalyzer:
                         self._heart_rate = round(self._f_hr.update(bpm, now), 1)
                     elif bpm == -3.0:
                         self._heart_rate = -3.0
+                    # HRV — her RPPG_UPDATE_EVERY karede bir hesapla
+                    hrv_result = self._hrv.compute()
+                    if hrv_result is not None and hrv_result.reliable:
+                        self._hrv_rmssd = round(hrv_result.rmssd, 1)
+                    elif hrv_result is not None and not hrv_result.reliable:
+                        self._hrv_rmssd = -1.0
 
             heart_rate = -2.0 if motion_suppressed else self._heart_rate
         else:
@@ -1015,6 +1025,7 @@ class PoseAnalyzer:
         self._current_fps      = 0.0
         self._sitting_start = 0.0
         self.reset_calibration()
+        self._hrv.reset()
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
