@@ -1,120 +1,122 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
+NeuroKit2 tabanlı — ppg_clean + ppg_findpeaks + hrv_time pipeline.
 Deneysel modül — klinik kullanım için değil.
-Sinyal kalitesi düşükse otomatik devre dışı kalır.
 """
 
 import numpy as np
-from scipy.signal import find_peaks, butter, filtfilt
 from scipy.interpolate import interp1d
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
+try:
+    import neurokit2 as nk
+    NK_AVAILABLE = True
+except ImportError:
+    NK_AVAILABLE = False
+
 
 @dataclass
 class HRVResult:
-    rmssd:      float   # ms — ana HRV metriği
-    nn50:       int     # 50ms üzeri ardışık fark sayısı
-    pnn50:      float   # nn50 / toplam interval %
-    snr:        float   # sinyal kalite skoru
-    reliable:   bool    # güvenilir mi?
-    reason:     str     # güvenilir değilse neden
+    rmssd:    float
+    nn50:     int
+    pnn50:    float
+    snr:      float
+    reliable: bool
+    reason:   str
 
 
 class HRVAnalyzer:
-    TARGET_FS   = 100.0   # interpolasyon hedef frekansı (Hz)
-    BANDPASS_LO = 0.7     # Hz (~42 BPM)
-    BANDPASS_HI = 4.0     # Hz (~240 BPM)
-    MIN_PEAKS   = 12       # güvenilir sonuç için minimum tepe sayısı
-    MIN_SNR     = 3.5     # minimum sinyal/gürültü oranı
+    TARGET_FS  = 100.0   # interpolasyon hedef frekansı (Hz)
+    MIN_PEAKS  = 10      # güvenilir sonuç için minimum tepe sayısı
+    MIN_SNR    = 3.0     # minimum sinyal/gürültü oranı
+    MIN_FRAMES = 200     # minimum buffer (~13 sn @15fps)
 
     def __init__(self, buffer_size: int = 450):
-        self._raw_buffer: deque = deque(maxlen=buffer_size)
-        self._time_buffer: deque = deque(maxlen=buffer_size)
+        self._green_buffer: deque = deque(maxlen=buffer_size)
+        self._time_buffer:  deque = deque(maxlen=buffer_size)
 
     def add_sample(self, rgb_mean: np.ndarray, timestamp: float):
         """Her frame'de çağrılır. rgb_mean: [R, G, B]"""
-        self._raw_buffer.append(float(rgb_mean[1]))  # yeşil kanal
+        self._green_buffer.append(float(rgb_mean[1]))  # yeşil kanal
         self._time_buffer.append(timestamp)
 
     def compute(self) -> Optional[HRVResult]:
-        if len(self._raw_buffer) < 150:   # en az 10 sn
+        if not NK_AVAILABLE:
+            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
+                             snr=-1, reliable=False,
+                             reason="neurokit2 yüklü değil")
+
+        if len(self._green_buffer) < self.MIN_FRAMES:
             return None
 
-        signal = np.array(self._raw_buffer)
+        signal = np.array(self._green_buffer)
         times  = np.array(self._time_buffer)
 
-        # 1. Detrend
-        signal = signal - np.polyval(np.polyfit(np.arange(len(signal)), signal, 1),
-                                      np.arange(len(signal)))
-
-        # 2. SNR kontrolü
+        # 1. SNR kontrolü
         snr = float(np.var(signal) / (np.var(np.diff(signal)) + 1e-6))
         if snr < self.MIN_SNR:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=snr, reliable=False,
+                             snr=round(snr, 2), reliable=False,
                              reason=f"Düşük SNR: {snr:.2f}")
 
-        # 3. Interpolasyon: gerçek FPS → 100Hz
+        # 2. Cubic spline interpolasyon → TARGET_FS (100Hz)
         duration = times[-1] - times[0]
-        if duration <= 0:
+        if duration <= 1.0:
             return None
-        t_uniform = np.arange(times[0], times[-1], 1.0 / self.TARGET_FS)
-        interp_fn = interp1d(times, signal, kind='cubic', bounds_error=False,
-                              fill_value='extrapolate')
-        signal_resampled = interp_fn(t_uniform)
 
-        # 4. Bandpass filtre
-        nyq = self.TARGET_FS / 2.0
-        lo  = self.BANDPASS_LO / nyq
-        hi  = self.BANDPASS_HI / nyq
-        b, a = butter(3, [lo, hi], btype='band')
+        t_uniform = np.arange(times[0], times[-1], 1.0 / self.TARGET_FS)
         try:
-            signal_filtered = filtfilt(b, a, signal_resampled)
+            interp_fn = interp1d(times, signal, kind='cubic',
+                                  bounds_error=False, fill_value='extrapolate')
+            signal_resampled = interp_fn(t_uniform)
         except Exception:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=snr, reliable=False,
-                             reason="Filtre hatası")
+                             snr=round(snr, 2), reliable=False,
+                             reason="İnterpolasyon hatası")
 
-        # 5. Peak detection
-        min_distance = int(self.TARGET_FS * 0.4)  # min 400ms arası (~150 BPM max)
-        peaks, props = find_peaks(signal_filtered,
-                                distance=min_distance,
-                                prominence=np.std(signal_filtered) * 0.8,
-                                height=np.mean(signal_filtered))
+        # 3. NeuroKit2 — PPG temizleme + peak detection
+        try:
+            ppg_clean = nk.ppg_clean(
+                signal_resampled,
+                sampling_rate=int(self.TARGET_FS)
+            )
+            peaks_info = nk.ppg_findpeaks(
+                ppg_clean,
+                sampling_rate=int(self.TARGET_FS),
+                method="elgendi"
+            )
+            peaks = peaks_info["PPG_Peaks"]
+        except Exception as e:
+            return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
+                             snr=round(snr, 2), reliable=False,
+                             reason=f"NK2 peak hatası: {str(e)[:30]}")
 
         if len(peaks) < self.MIN_PEAKS:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=snr, reliable=False,
+                             snr=round(snr, 2), reliable=False,
                              reason=f"Yetersiz tepe: {len(peaks)}")
 
-        # 6. RR intervalları (ms)
-        rr_intervals = np.diff(peaks) / self.TARGET_FS * 1000.0
-
-        # Fizyolojik sınır filtresi (300–2000ms arası geçerli)
-        rr_intervals = rr_intervals[(rr_intervals >= 400) & (rr_intervals <= 1200)]
-
-        if len(rr_intervals) < 4:
+        # 4. NeuroKit2 — HRV zaman alanı metrikleri
+        try:
+            hrv_df = nk.hrv_time(
+                peaks_info,
+                sampling_rate=int(self.TARGET_FS)
+            )
+            rmssd = float(hrv_df["HRV_RMSSD"].values[0])
+            nn50  = int(hrv_df["HRV_pNN50"].values[0] * len(peaks) / 100)
+            pnn50 = float(hrv_df["HRV_pNN50"].values[0])
+        except Exception as e:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=snr, reliable=False,
-                             reason="Geçerli RR interval yok")
+                             snr=round(snr, 2), reliable=False,
+                             reason=f"HRV hesap hatası: {str(e)[:30]}")
 
-        # Median absolute deviation filtresi — outlier RR intervalları at
-        rr_median = np.median(rr_intervals)
-        rr_mad = np.median(np.abs(rr_intervals - rr_median))
-        rr_intervals = rr_intervals[np.abs(rr_intervals - rr_median) < 3 * rr_mad]
-
-        if len(rr_intervals) < 4:
+        # 5. Fizyolojik sınır kontrolü
+        if not (5 <= rmssd <= 150):
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                            snr=snr, reliable=False,
-                            reason="MAD filtresi sonrası yetersiz interval")
-
-        # 7. HRV metrikleri
-        diff_rr = np.diff(rr_intervals)
-        rmssd   = float(np.sqrt(np.mean(diff_rr ** 2)))
-        nn50    = int(np.sum(np.abs(diff_rr) > 50))
-        pnn50   = float(nn50 / len(diff_rr) * 100)
+                             snr=round(snr, 2), reliable=False,
+                             reason=f"Fizyolojik sınır dışı: {rmssd:.1f}ms")
 
         return HRVResult(
             rmssd    = round(rmssd, 1),
@@ -126,5 +128,5 @@ class HRVAnalyzer:
         )
 
     def reset(self):
-        self._raw_buffer.clear()
+        self._green_buffer.clear()
         self._time_buffer.clear()
