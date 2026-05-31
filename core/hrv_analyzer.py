@@ -1,12 +1,13 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
-Pan-Tompkins adaptasyonu — saf NumPy/SciPy, bağımlılık yok.
+Elgendi (2013) peak detection — saf NumPy/SciPy, bağımlılık yok.
 Deneysel modül — klinik kullanım için değil.
 """
 
 import numpy as np
 from scipy.interpolate import interp1d
-from scipy.signal import butter, filtfilt, medfilt
+from scipy.ndimage import uniform_filter1d
+from scipy.signal import butter, filtfilt
 from collections import deque
 from dataclasses import dataclass
 from typing import Optional
@@ -36,35 +37,27 @@ class HRVAnalyzer:
         self._green_buffer.append(float(rgb_mean[1]))
         self._time_buffer.append(timestamp)
 
-    # ── Pan-Tompkins adaptasyonu ──────────────────────────────────────────────
+    # ── Elgendi (2013) peak detection ────────────────────────────────────────
     @staticmethod
-    def _pantompkins_peaks(signal: np.ndarray, fs: float) -> np.ndarray:
-        """Pan-Tompkins PPG adaptasyonu — türev + kare + MWI."""
+    def _elgendi_peaks(signal: np.ndarray, fs: float) -> np.ndarray:
         if len(signal) < int(fs * 1.0):
             return np.array([], dtype=int)
 
-        # 1. Türev
-        dy = np.diff(signal, prepend=signal[0])
+        sqrd = signal ** 2
 
-        # 2. Kare
-        dy2 = dy ** 2
+        peak_w = max(1, int(np.round(0.111 * fs)))
+        beat_w = max(1, int(np.round(0.667 * fs)))
 
-        # 3. Moving window integration — 150ms pencere
-        win = max(1, int(0.15 * fs))
-        mwi = np.convolve(dy2, np.ones(win) / win, mode='same')
+        ma_peak = uniform_filter1d(sqrd, size=peak_w)
+        ma_beat = uniform_filter1d(sqrd, size=beat_w)
 
-        # 4. Adaptive threshold
-        threshold = np.mean(mwi) + 0.5 * np.std(mwi)
+        offset  = 0.02 * np.mean(sqrd)
+        thresh  = ma_beat + offset
 
-        # 5. Peak detection — 500ms minimum aralık
-        min_delay = int(0.5 * fs)
-        peaks = []
-        last  = -min_delay
-
-        above  = mwi > threshold
-        diff   = np.diff(above.astype(int), prepend=0)
-        starts = np.where(diff == 1)[0]
-        ends   = np.where(diff == -1)[0]
+        blocks  = (ma_peak > thresh).astype(int)
+        diff    = np.diff(blocks, prepend=0)
+        starts  = np.where(diff == 1)[0]
+        ends    = np.where(diff == -1)[0]
 
         if len(ends) == 0 or len(starts) == 0:
             return np.array([], dtype=int)
@@ -73,6 +66,10 @@ class HRVAnalyzer:
             ends = ends[1:]
         min_len = min(len(starts), len(ends))
         starts, ends = starts[:min_len], ends[:min_len]
+
+        min_delay = int(0.45 * fs)
+        peaks = []
+        last  = -min_delay
 
         for s, e in zip(starts, ends):
             if e <= s:
@@ -119,20 +116,14 @@ class HRVAnalyzer:
         sig_resampled = sig_resampled - np.polyval(
             np.polyfit(t_idx, sig_resampled, 1), t_idx)
 
-        # 4. Medyan filtresi — küçük gürültü temizleme
-        try:
-            sig_resampled = medfilt(sig_resampled, kernel_size=5)
-        except Exception:
-            pass
-
-        # 5. Bandpass filtre — 0.8–3Hz
+        # 4. Bandpass filtre — 0.8–3Hz
         try:
             b, a = butter(3, [0.8, 3.0], btype='band', fs=self.TARGET_FS)
             sig_resampled = filtfilt(b, a, sig_resampled)
         except Exception:
             pass
 
-        # 6. Normalize
+        # 5. Normalize
         std = sig_resampled.std()
         if std < 1e-6:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
@@ -140,15 +131,15 @@ class HRVAnalyzer:
                              reason="Düz sinyal")
         sig_resampled = (sig_resampled - np.mean(sig_resampled)) / std
 
-        # 7. Pan-Tompkins peak detection
-        peaks = self._pantompkins_peaks(sig_resampled, self.TARGET_FS)
+        # 6. Elgendi peak detection
+        peaks = self._elgendi_peaks(sig_resampled, self.TARGET_FS)
 
         if len(peaks) < self.MIN_PEAKS:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Yetersiz tepe: {len(peaks)}")
 
-        # 8. RR intervalları (ms)
+        # 7. RR intervalları (ms)
         rr = np.diff(peaks) / self.TARGET_FS * 1000.0
 
         # Fizyolojik sınır filtresi
@@ -172,14 +163,14 @@ class HRVAnalyzer:
                              snr=round(snr, 2), reliable=False,
                              reason="Filtre sonrası yetersiz")
 
-        # 9. HRV metrikleri
+        # 8. HRV metrikleri
         diff_rr = np.diff(rr)
         rmssd   = float(np.sqrt(np.mean(diff_rr ** 2)))
         nn50    = int(np.sum(np.abs(diff_rr) > 50))
         pnn50   = float(nn50 / len(diff_rr) * 100)
 
         # Fizyolojik sınır kontrolü
-        if not (8.0 <= rmssd <= 400.0):
+        if not (8.0 <= rmssd <= 150.0):
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Sınır dışı: {rmssd:.1f}ms")
