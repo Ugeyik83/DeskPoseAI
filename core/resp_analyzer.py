@@ -109,7 +109,8 @@ class RespAnalyzer:
         # 6. Tepe tespiti
         min_distance = int(self.TARGET_FS * 1.5)
         peaks, _ = find_peaks(resp_signal, distance=min_distance,
-                               prominence=0.3)
+                               prominence=0.5,
+                               width=int(self.TARGET_FS * 0.5))
 
         if len(peaks) < 3:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
