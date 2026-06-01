@@ -357,6 +357,7 @@ with col_cam:
     feedback_ph         = st.empty()
     posture_alert_ph    = st.empty()
     stationary_alert_ph = st.empty()
+    eye_break_ph        = st.empty()
 
 
 with col_metrics:
@@ -420,6 +421,25 @@ if ctx.state.playing and ctx.video_processor:
 
         stationary_alert_ph.empty()
 
+        
+
+        # 20-20-20 hatırlatıcısı
+        eye_min = processor.analyzer._eye_break_minutes
+        if eye_min >= 20.0:
+            remaining = 21.0 - eye_min
+            if remaining > 0:
+                eye_break_ph.info(
+                    f"👁️ **20-20-20 Kuralı** — 20 dakika ekran başındasın. "
+                    f"20 saniye boyunca 6 metre uzağa bak. "
+                    f"({(eye_min - 20.0) * 60:.0f} sn geçti)"
+                )
+            else:
+                processor.analyzer._eye_break_start = time.monotonic()
+                eye_break_ph.empty()
+        else:
+            eye_break_ph.empty()
+
+        
         if metrics.risk_level != "good":
             st.session_state.consecutive_bad += 1
         else:

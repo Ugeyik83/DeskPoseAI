@@ -203,6 +203,8 @@ class PoseAnalyzer:
         self._perclos_frame_count: int = 0
         self._hrv = HRVAnalyzer()
         self._hrv_rmssd: float = -1.0
+        self._eye_break_start: float = 0.0   # 20-20-20 sayacı
+        self._eye_break_minutes: float = 0.0
         
         
 
@@ -1015,6 +1017,11 @@ class PoseAnalyzer:
         if self._sitting_start == 0.0:
             self._sitting_start = now
         s.stationary_minutes = (now - self._sitting_start) / 60.0
+        
+        # 20-20-20 sayacı
+        if self._eye_break_start == 0.0:
+            self._eye_break_start = now
+        self._eye_break_minutes = (now - self._eye_break_start) / 60.0
 
     def get_posture_score(self) -> float:
         if self.session.total_frames == 0:
@@ -1044,7 +1051,8 @@ class PoseAnalyzer:
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
-        
+        self._eye_break_start   = 0.0
+        self._eye_break_minutes = 0.0
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
