@@ -3,7 +3,7 @@
 **Gerçek Zamanlı Masabaşı Ergonomi İzleme**  
 Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü bilgisayar web kamerası ile çalışır — ek donanım gerekmez.
 
-![DeskPoseAI Genel Bakış](docs/overview_en.png)
+![DeskPoseAI Genel Bakış](docs/overview.png)
 
 [![Streamlit Uygulaması](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
 
@@ -31,9 +31,9 @@ Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü b
   - Normal: 15–20 kırpma/dk, ekran başında 3–7/dk'ya düşer
   - CVS (Bilgisayar Görme Sendromu) erken uyarısı
 - **PERCLOS** — Göz kapalı kalma yüzdesi, yorgunluk göstergesi (NHTSA P70 standardı)
-  - < %8 → Normal uyanıklık
+  - <%8 → Normal uyanıklık
   - %8–15 → Hafif yorgunluk
-  - > %15 → Ciddi yorgunluk
+  - >%15 → Ciddi yorgunluk
 - **Ekran Mesafesi** — Iris çapı tabanlı (Bekerman 2014, iris = 11.7 mm sabit)
   - Kalibrasyonlu: baseline iris pikseli × mesafe oranı
   - Kalibrasyonsuz: pinhole buluşu (~60° GGA)
