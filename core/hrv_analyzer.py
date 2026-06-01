@@ -24,12 +24,15 @@ class HRVResult:
 
 
 class HRVAnalyzer:
-    TARGET_FS    = 100.0
-    MIN_PEAKS    = 10
-    MIN_SNR      = 2.0
-    MIN_FRAMES   = 500
-    N_WINDOWS    = 4
-    WINDOW_SEC   = 12.0
+    TARGET_FS        = 100.0
+    MIN_PEAKS        = 10
+    MIN_SNR          = 2.0
+    MIN_FRAMES       = 500
+    MIN_DURATION_SEC = 20.0   # FPS bağımsız süre kontrolü
+    N_WINDOWS        = 4
+    WINDOW_SEC       = 15.0
+    MIN_HR_BPM       = 45
+    MAX_HR_BPM       = 160
 
     def __init__(self, buffer_size: int = 500):
         self._rgb_buffer:     deque      = deque(maxlen=buffer_size)
@@ -45,37 +48,26 @@ class HRVAnalyzer:
     # ── Ten rengi kazanç kalibrasyonu ────────────────────────────────────────
     @staticmethod
     def _compute_gain(rgb_data: np.ndarray) -> np.ndarray:
-        """
-        Ten rengi kalibrasyonu.
-        Koyu ten: R kanalı ağırlığı artar.
-        Açık ten: G kanalı baskın kalır.
-        """
         R_mean = rgb_data[:, 0].mean()
         G_mean = rgb_data[:, 1].mean()
         B_mean = rgb_data[:, 2].mean()
-
         total   = R_mean + G_mean + B_mean + 1e-6
         r_ratio = R_mean / total
         g_ratio = G_mean / total
-
-        r_gain = 1.0 + max(0.0, 0.33 - g_ratio) * 2.0
-        g_gain = 1.0
-        b_gain = 1.0 + max(0.0, 0.33 - r_ratio) * 0.5
-
+        r_gain  = 1.0 + max(0.0, 0.33 - g_ratio) * 2.0
+        g_gain  = 1.0
+        b_gain  = 1.0 + max(0.0, 0.33 - r_ratio) * 0.5
         return np.array([r_gain, g_gain, b_gain])
 
     # ── CHROM sinyali ────────────────────────────────────────────────────────
     @staticmethod
     def _chrom_signal(rgb_data: np.ndarray,
                       gain: np.ndarray = None) -> np.ndarray:
-        """CHROM algoritması (De Haan & Jeanne 2013)."""
         R, G, B = rgb_data[:, 0], rgb_data[:, 1], rgb_data[:, 2]
-
         if gain is not None:
             R = R * gain[0]
             G = G * gain[1]
             B = B * gain[2]
-
         Rn = R / (R.mean() + 1e-6)
         Gn = G / (G.mean() + 1e-6)
         Bn = B / (B.mean() + 1e-6)
@@ -86,13 +78,18 @@ class HRVAnalyzer:
         S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
         return S
 
-    # ── Elgendi (2013) peak detection ────────────────────────────────────────
+    # ── Elgendi (2013) peak detection — rectified ────────────────────────────
     @staticmethod
-    def _elgendi_peaks(signal: np.ndarray, fs: float) -> np.ndarray:
+    def _elgendi_peaks(signal: np.ndarray, fs: float,
+                       max_hr_bpm: float = 160) -> np.ndarray:
         if len(signal) < int(fs * 1.0):
             return np.array([], dtype=int)
 
-        sqrd   = signal ** 2
+        # Rectify — negatif değerleri sıfırla, ters polarite etkisini önle
+        rectified = signal.copy()
+        rectified[rectified < 0] = 0
+        sqrd = rectified ** 2
+
         peak_w = max(1, int(np.round(0.111 * fs)))
         beat_w = max(1, int(np.round(0.667 * fs)))
 
@@ -115,7 +112,8 @@ class HRVAnalyzer:
         min_len = min(len(starts), len(ends))
         starts, ends = starts[:min_len], ends[:min_len]
 
-        min_delay = int(0.45 * fs)
+        # HR üst sınırına göre min_delay
+        min_delay = int((60.0 / max_hr_bpm) * fs)
         peaks = []
         last  = -min_delay
 
@@ -132,10 +130,17 @@ class HRVAnalyzer:
     # ── Tek pencere RMSSD ─────────────────────────────────────────────────────
     def _compute_window_rmssd(self, rgb_data: np.ndarray,
                                times: np.ndarray) -> Optional[float]:
+        # Timestamp sıralama + unique kontrolü
+        order = np.argsort(times)
+        times = times[order]
+        rgb_data = rgb_data[order]
+        unique_mask = np.diff(times, prepend=times[0] - 1e-6) > 0
+        times    = times[unique_mask]
+        rgb_data = rgb_data[unique_mask]
+        if len(times) < 4:
+            return None
+
         try:
-            if not self._gain_computed:
-                self._chrom_gain    = self._compute_gain(rgb_data)
-                self._gain_computed = True
             S = self._chrom_signal(rgb_data, gain=self._chrom_gain)
         except Exception:
             return None
@@ -149,8 +154,7 @@ class HRVAnalyzer:
             return None
 
         try:
-            t_uniform     = np.linspace(times[0], times[-1],
-                                         int(duration * self.TARGET_FS))
+            t_uniform     = np.arange(times[0], times[-1], 1.0 / self.TARGET_FS)
             cs            = CubicSpline(times, S)
             sig_resampled = cs(t_uniform)
         except Exception:
@@ -160,30 +164,46 @@ class HRVAnalyzer:
             b, a = butter(3, [0.7, 2.5], btype='band', fs=self.TARGET_FS)
             sig_resampled = filtfilt(b, a, sig_resampled)
         except Exception:
-            pass
+            return None
 
         std = sig_resampled.std()
         if std < 1e-6:
             return None
         sig_resampled = (sig_resampled - np.mean(sig_resampled)) / std
 
-        peaks = self._elgendi_peaks(sig_resampled, self.TARGET_FS)
+        peaks = self._elgendi_peaks(sig_resampled, self.TARGET_FS,
+                                     self.MAX_HR_BPM)
         if len(peaks) < self.MIN_PEAKS:
             return None
 
         peak_times = t_uniform[peaks]
         rr = np.diff(peak_times) * 1000.0
 
+        # Fizyolojik sınır
         rr = rr[(rr >= 400) & (rr <= 1500)]
         if len(rr) < 4:
             return None
 
+        # HR BPM kontrolü
+        mean_rr = np.mean(rr)
+        hr_bpm  = 60000.0 / mean_rr
+        if not (self.MIN_HR_BPM <= hr_bpm <= self.MAX_HR_BPM):
+            return None
+
+        # RR std kontrolü — çok saçma dağılımı reddet
+        if np.std(rr) > 250:
+            return None
+
+        # Adaptif outlier filtresi
         rr_median = np.median(rr)
         rr_std    = np.std(rr)
-        rr        = rr[np.abs(rr - rr_median) < 2.5 * rr_std]
+        if rr_std > 1e-6:
+            rr = rr[np.abs(rr - rr_median) < 2.5 * rr_std]
 
+        # MAD filtresi — rr_mad == 0 koruması
         rr_mad = np.median(np.abs(rr - np.median(rr)))
-        rr     = rr[np.abs(rr - np.median(rr)) < 3 * rr_mad]
+        if rr_mad > 1e-6:
+            rr = rr[np.abs(rr - np.median(rr)) < 3 * rr_mad]
 
         if len(rr) < 4:
             return None
@@ -212,10 +232,28 @@ class HRVAnalyzer:
         rgb_all   = np.array(self._rgb_buffer)
         times_all = np.array(self._time_buffer)
 
+        # Timestamp sıralama + unique kontrolü
+        order = np.argsort(times_all)
+        times_all = times_all[order]
+        rgb_all   = rgb_all[order]
+        unique_mask = np.diff(times_all, prepend=times_all[0] - 1e-6) > 0
+        times_all = times_all[unique_mask]
+        rgb_all   = rgb_all[unique_mask]
+
         total_duration = times_all[-1] - times_all[0]
-        if total_duration < self.WINDOW_SEC:
+        if total_duration < self.MIN_DURATION_SEC:
             return None
 
+        # Gain hesaplama — compute() başında, SNR'dan önce
+        if not self._gain_computed:
+            self._chrom_gain    = self._compute_gain(rgb_all)
+            self._gain_computed = True
+        else:
+            # Adaptif gain — yavaş güncelleme
+            new_gain = self._compute_gain(rgb_all)
+            self._chrom_gain = 0.9 * self._chrom_gain + 0.1 * new_gain
+
+        # SNR kontrolü — gain uygulanmış sinyal üzerinde
         try:
             S_full = self._chrom_signal(rgb_all, gain=self._chrom_gain)
             snr    = float(np.var(S_full) / (np.var(np.diff(S_full)) + 1e-6))
@@ -227,6 +265,7 @@ class HRVAnalyzer:
                              snr=round(snr, 2), reliable=False,
                              reason=f"Düşük SNR: {snr:.2f}")
 
+        # Kayan pencereler
         window_results: List[float] = []
         step = max(1.0, (total_duration - self.WINDOW_SEC) / max(self.N_WINDOWS - 1, 1))
 
@@ -249,20 +288,23 @@ class HRVAnalyzer:
                              snr=round(snr, 2), reliable=False,
                              reason="Hiçbir pencere geçerli değil")
 
+        # Temporal averaging — medyan + history smoothing
         rmssd_avg = float(np.median(window_results))
+        self._rmssd_history.append(rmssd_avg)
+        rmssd_smooth = float(np.median(self._rmssd_history))
 
         if len(window_results) < 2:
-            return HRVResult(rmssd=round(rmssd_avg, 1), nn50=-1, pnn50=-1,
+            return HRVResult(rmssd=round(rmssd_smooth, 1), nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Tek pencere: {len(window_results)}")
 
         return HRVResult(
-            rmssd    = round(rmssd_avg, 1),
+            rmssd    = round(rmssd_smooth, 1),
             nn50     = -1,
             pnn50    = -1.0,
             snr      = round(snr, 2),
             reliable = True,
-            reason   = f"OK ({len(window_results)} pencere ortalaması)",
+            reason   = f"OK ({len(window_results)} pencere)",
         )
 
     def reset(self):
