@@ -540,6 +540,20 @@ if ctx.state.playing and ctx.video_processor:
         else:
             hr_color, hr_text, hr_unit, hr_desc, hr_prog = "#f85149", f"{hr:.0f}", "BPM", "Yüksek — stres/yorgunluk olabilir", min((hr - 40) / 120 * 100, 100)
 
+        # Solunum Hızı
+        rr = metrics.resp_rate
+        if rr < 0:
+            resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#8b949e", "Ölçülüyor", "", "~15 sn sonra aktif", None
+        elif rr < 12:
+            resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#d29922", f"{rr:.0f}", "/dk", "Düşük — derin nefes alıyor olabilir", rr / 40 * 100
+        elif rr <= 20:
+            resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#3fb950", f"{rr:.0f}", "/dk", "Normal (12–20/dk)", rr / 40 * 100
+        elif rr <= 30:
+            resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#d29922", f"{rr:.0f}", "/dk", "Yüksek — stres/efor", rr / 40 * 100
+        else:
+            resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#f85149", f"{rr:.0f}", "/dk", "Çok yüksek", rr / 40 * 100
+
+
         br = metrics.blink_rate
         if br < 0:
             blink_color, blink_text, blink_unit, blink_desc, blink_prog = "#8b949e", "Ölçülüyor", "", "60 sn sonra aktif", None
@@ -597,6 +611,8 @@ if ctx.state.playing and ctx.video_processor:
                         fhp_color, prog_pct=fhp, disclaimer=fhp_disc)
                 + _metric("Kalp Atışı (rPPG)", hr_text, hr_unit, hr_desc,
                           hr_color, prog_pct=hr_prog)
+                + _metric("Solunum Hızı", resp_text, resp_unit, resp_desc,
+                          resp_color, prog_pct=resp_prog)
                 + _metric("Ekran Mesafesi", dist_text, dist_unit, dist_desc,
                           dist_color, prog_pct=dist_prog)
                 + _metric("Göz Kırpma", blink_text, blink_unit, blink_desc,
