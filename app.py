@@ -292,6 +292,36 @@ with st.sidebar:
 
     st.divider()
 
+    st.markdown('<div class="sb-title">Solunum Validasyonu</div>', unsafe_allow_html=True)
+    st.markdown('<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">30 saniye boyunca her nefeste butona bas, algoritmayı karşılaştır.</div>', unsafe_allow_html=True)
+
+    if "breath_count" not in st.session_state:
+        st.session_state.breath_count = 0
+    if "breath_timer_start" not in st.session_state:
+        st.session_state.breath_timer_start = None
+
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🫁 Nefes", use_container_width=True):
+            if st.session_state.breath_timer_start is None:
+                st.session_state.breath_timer_start = time.time()
+            st.session_state.breath_count += 1
+    with col2:
+        if st.button("Sıfırla", use_container_width=True):
+            st.session_state.breath_count = 0
+            st.session_state.breath_timer_start = None
+
+    if st.session_state.breath_timer_start is not None:
+        elapsed = time.time() - st.session_state.breath_timer_start
+        if elapsed > 0:
+            manual_rate = round(st.session_state.breath_count / elapsed * 60, 1)
+            st.markdown(f'<div style="font-size:12px;color:#e6edf3;">Manuel: <b>{manual_rate:.1f}/dk</b> ({st.session_state.breath_count} nefes, {elapsed:.0f} sn)</div>', unsafe_allow_html=True)
+            if ctx.state.playing and ctx.video_processor:
+                algo_rate = st.session_state.get("last_resp_rate", -1)
+                if algo_rate > 0:
+                    st.markdown(f'<div style="font-size:12px;color:#8b949e;">Algoritma: <b>{algo_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
+
+
     st.markdown('<div class="sb-title">Bildirim Ayarları</div>', unsafe_allow_html=True)
     st.session_state.alert_cooldown = st.slider(
         "Bildirim aralığı (sn)", 10, 120, 30, 5,
@@ -542,6 +572,7 @@ if ctx.state.playing and ctx.video_processor:
 
         # Solunum Hızı
         rr = metrics.resp_rate
+        st.session_state["last_resp_rate"] = rr
         if rr < 0:
             resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#8b949e", "Ölçülüyor", "", "~15 sn sonra aktif", None
         elif rr < 12:
