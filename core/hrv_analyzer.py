@@ -152,18 +152,28 @@ class HRVAnalyzer:
         if len(rr) < 4:
             return None
 
+        # Adaptif outlier filtresi
         rr_median = np.median(rr)
         rr_std    = np.std(rr)
         rr        = rr[np.abs(rr - rr_median) < 2.5 * rr_std]
 
+        # MAD filtresi
         rr_mad = np.median(np.abs(rr - np.median(rr)))
         rr     = rr[np.abs(rr - np.median(rr)) < 3 * rr_mad]
 
         if len(rr) < 4:
             return None
 
-        diff_rr = np.diff(rr)
-        rmssd   = float(np.sqrt(np.mean(diff_rr ** 2)))
+        # %20 ardışık fark filtresi — fizyolojik tutarsız sıçramaları at
+        diff_rr   = np.diff(rr)
+        threshold = 0.20 * rr[:-1]
+        valid_mask = np.abs(diff_rr) < threshold
+        filtered_diffs = diff_rr[valid_mask]
+
+        if len(filtered_diffs) == 0:
+            return None
+
+        rmssd = float(np.sqrt(np.mean(filtered_diffs ** 2)))
 
         if not (8.0 <= rmssd <= 400.0):
             return None
