@@ -293,41 +293,48 @@ with st.sidebar:
     st.divider()
 
     st.markdown('<div class="sb-title">Solunum Validasyonu</div>', unsafe_allow_html=True)
-    st.markdown('<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">30 saniye boyunca her nefeste butona bas, algoritmayı karşılaştır.</div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div style="font-size:12px;color:#8b949e;margin-bottom:10px;">'
+        '30 saniye kendin say, algoritmayı karşılaştır.</div>',
+        unsafe_allow_html=True)
 
-    if "breath_count" not in st.session_state:
-        st.session_state.breath_count = 0
-    if "breath_timer_start" not in st.session_state:
-        st.session_state.breath_timer_start = None
+    # Algoritma sayacı
+    if ctx.state.playing and ctx.video_processor:
+        bc = getattr(ctx.video_processor.analyzer, '_breath_count', 0)
+        rr = st.session_state.get("last_resp_rate", -1)
+        st.markdown(
+            f'<div style="font-family:monospace;font-size:32px;font-weight:700;'
+            f'color:#58a6ff;text-align:center;">{bc}</div>'
+            f'<div style="font-size:11px;color:#8b949e;text-align:center;margin-bottom:6px;">'
+            f'algoritma nefes sayısı</div>',
+            unsafe_allow_html=True)
+        if rr > 0:
+            st.markdown(
+                f'<div style="font-size:12px;color:#8b949e;text-align:center;">'
+                f'Hız: <b style="color:#e6edf3">{rr:.1f}/dk</b></div>',
+                unsafe_allow_html=True)
 
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🫁 Nefes", use_container_width=True):
-            if st.session_state.breath_timer_start is None:
-                st.session_state.breath_timer_start = time.time()
-            st.session_state.breath_count += 1
-    with col2:
-        if st.button("Sıfırla", use_container_width=True):
-            st.session_state.breath_count = 0
-            st.session_state.breath_timer_start = None
+    st.divider()
 
-    if st.session_state.breath_timer_start is not None:
-        elapsed = time.time() - st.session_state.breath_timer_start
-        if elapsed > 0:
-            manual_rate = round(st.session_state.breath_count / elapsed * 60, 1)
-            st.markdown(f'<div style="font-size:12px;color:#e6edf3;">Manuel: <b>{manual_rate:.1f}/dk</b> ({st.session_state.breath_count} nefes, {elapsed:.0f} sn)</div>', unsafe_allow_html=True)
-            algo_rate = st.session_state.get("last_resp_rate", -1)
-            if algo_rate > 0:
-                st.markdown(f'<div style="font-size:12px;color:#8b949e;">Algoritma: <b>{algo_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
-
-
-    st.markdown('<div class="sb-title">Bildirim Ayarları</div>', unsafe_allow_html=True)
-    st.session_state.alert_cooldown = st.slider(
-        "Bildirim aralığı (sn)", 10, 120, 30, 5,
-        help="İki uyarı arasındaki minimum bekleme süresi")
-    st.session_state.warn_thresh = st.slider(
-        "Uyarı eşiği (kare)", 2, 15, 5, 1,
-        help="Kaç ardışık kötü kare sonrası uyarı verilsin")
+    # Manuel karşılaştırma
+    manual_count = st.number_input("30 sn'de kendin kaç saydın?",
+                                    min_value=0, max_value=30,
+                                    value=0, step=1)
+    if manual_count > 0:
+        manual_rate = round(manual_count / 30 * 60, 1)
+        algo_rate   = st.session_state.get("last_resp_rate", -1)
+        st.markdown(
+            f'<div style="font-size:12px;color:#e6edf3;">Manuel: '
+            f'<b>{manual_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
+        if algo_rate > 0:
+            diff       = abs(manual_rate - algo_rate)
+            diff_color = "#3fb950" if diff < 3 else "#d29922" if diff < 6 else "#f85149"
+            st.markdown(
+                f'<div style="font-size:12px;color:#8b949e;">Algoritma: '
+                f'<b>{algo_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
+            st.markdown(
+                f'<div style="font-size:12px;color:{diff_color};">Fark: '
+                f'<b>{diff:.1f}/dk</b></div>', unsafe_allow_html=True)
 
     st.divider()
 

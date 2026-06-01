@@ -1,6 +1,6 @@
 """
 RespAnalyzer: rPPG sinyalinden solunum hızı tahmini.
-CHROM düşük bant filtresi + tepe tespiti.
+CHROM düşük bant filtresi + tepe tespiti + kümülatif sayaç.
 Deneysel modül — klinik kullanım için değil.
 Normal solunum: 12–20 nefes/dk (0.2–0.33 Hz)
 """
@@ -15,30 +15,30 @@ from typing import Optional
 
 @dataclass
 class RespResult:
-    rate:     float   # nefes/dk
-    snr:      float   # sinyal kalitesi
-    reliable: bool
-    reason:   str
+    rate:          float
+    snr:           float
+    reliable:      bool
+    reason:        str
+    breath_count:  int = 0
 
 
 class RespAnalyzer:
-    TARGET_FS  = 10.0    # solunum için 10Hz yeterli
-    MIN_FRAMES = 150     # ~15 sn @10fps eşdeğer
-    RESP_LOW   = 0.1     # Hz — 6 nefes/dk
-    RESP_HIGH  = 0.6     # Hz — 36 nefes/dk
+    TARGET_FS  = 10.0
+    MIN_FRAMES = 150
+    RESP_LOW   = 0.1
+    RESP_HIGH  = 0.6
     MIN_SNR    = 1.5
 
     def __init__(self, buffer_size: int = 600):
-        # 600 frame @25fps = 24 sn
-        self._rgb_buffer:  deque = deque(maxlen=buffer_size)
-        self._time_buffer: deque = deque(maxlen=buffer_size)
+        self._rgb_buffer:      deque = deque(maxlen=buffer_size)
+        self._time_buffer:     deque = deque(maxlen=buffer_size)
+        self._total_breaths:   int   = 0
+        self._last_peak_time:  float = 0.0
 
     def add_sample(self, rgb_mean: np.ndarray, timestamp: float):
-        """Her frame'de çağrılır. rgb_mean: [R, G, B]"""
         self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
 
-    # ── CHROM sinyali ────────────────────────────────────────────────────────
     @staticmethod
     def _chrom_signal(rgb_data: np.ndarray) -> np.ndarray:
         R, G, B = rgb_data[:, 0], rgb_data[:, 1], rgb_data[:, 2]
@@ -52,7 +52,6 @@ class RespAnalyzer:
         S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
         return S
 
-    # ── Ana hesaplama ─────────────────────────────────────────────────────────
     def compute(self) -> Optional[RespResult]:
         if len(self._rgb_buffer) < self.MIN_FRAMES:
             return None
@@ -75,9 +74,10 @@ class RespAnalyzer:
         snr = float(np.var(S) / (np.var(np.diff(S)) + 1e-6))
         if snr < self.MIN_SNR:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason=f"Düşük SNR: {snr:.2f}")
+                              reason=f"Düşük SNR: {snr:.2f}",
+                              breath_count=self._total_breaths)
 
-        # 3. Cubic spline interpolasyon → TARGET_FS (10Hz)
+        # 3. Cubic spline interpolasyon → TARGET_FS
         try:
             t_uniform     = np.linspace(times[0], times[-1],
                                          int(duration * self.TARGET_FS))
@@ -85,7 +85,8 @@ class RespAnalyzer:
             sig_resampled = cs(t_uniform)
         except Exception:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason="İnterpolasyon hatası")
+                              reason="İnterpolasyon hatası",
+                              breath_count=self._total_breaths)
 
         # 4. Solunum bandpass — 0.1–0.6 Hz
         try:
@@ -94,51 +95,64 @@ class RespAnalyzer:
             resp_signal = filtfilt(b, a, sig_resampled)
         except Exception:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason="Filtre hatası")
+                              reason="Filtre hatası",
+                              breath_count=self._total_breaths)
 
         # 5. Normalize
         std = resp_signal.std()
         if std < 1e-6:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason="Düz sinyal")
+                              reason="Düz sinyal",
+                              breath_count=self._total_breaths)
         resp_signal = (resp_signal - resp_signal.mean()) / std
 
-        # 6. Tepe tespiti — minimum 1.5 sn aralık (max 40 nefes/dk)
+        # 6. Tepe tespiti
         min_distance = int(self.TARGET_FS * 1.5)
         peaks, _ = find_peaks(resp_signal, distance=min_distance,
                                prominence=0.3)
 
         if len(peaks) < 3:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason=f"Yetersiz tepe: {len(peaks)}")
+                              reason=f"Yetersiz tepe: {len(peaks)}",
+                              breath_count=self._total_breaths)
 
-        # 7. Solunum hızı — tepe aralıklarından hesapla
-        peak_times    = t_uniform[peaks]
-        intervals     = np.diff(peak_times)  # sn cinsinden
+        # 7. Kümülatif nefes sayacı
+        if len(peaks) >= 1:
+            last_peak_t = float(t_uniform[peaks[-1]])
+            if last_peak_t > self._last_peak_time:
+                new_peaks = sum(1 for p in t_uniform[peaks]
+                                if p > self._last_peak_time)
+                self._total_breaths += new_peaks
+                self._last_peak_time  = last_peak_t
 
-        # Fizyolojik filtre — 1.5–10 sn arası (6–40 nefes/dk)
-        intervals = intervals[(intervals >= 1.5) & (intervals <= 10.0)]
+        # 8. Solunum hızı
+        peak_times = t_uniform[peaks]
+        intervals  = np.diff(peak_times)
+        intervals  = intervals[(intervals >= 1.5) & (intervals <= 10.0)]
 
         if len(intervals) < 2:
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason="Geçerli interval yok")
+                              reason="Geçerli interval yok",
+                              breath_count=self._total_breaths)
 
-        # Ortalama interval → nefes/dk
         avg_interval = float(np.median(intervals))
         rate         = round(60.0 / avg_interval, 1)
 
-        # Fizyolojik sınır kontrolü
         if not (6.0 <= rate <= 40.0):
             return RespResult(rate=-1, snr=round(snr, 2), reliable=False,
-                              reason=f"Sınır dışı: {rate:.1f}/dk")
+                              reason=f"Sınır dışı: {rate:.1f}/dk",
+                              breath_count=self._total_breaths)
 
         return RespResult(
-            rate     = rate,
-            snr      = round(snr, 2),
-            reliable = True,
-            reason   = "OK",
+            rate          = rate,
+            snr           = round(snr, 2),
+            reliable      = True,
+            reason        = "OK",
+            breath_count  = self._total_breaths,
         )
 
     def reset(self):
         self._rgb_buffer.clear()
         self._time_buffer.clear()
+        self._total_breaths  = 0
+        self._last_peak_time = 0.0

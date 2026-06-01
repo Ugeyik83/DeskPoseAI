@@ -15,7 +15,6 @@ from core.hrv_analyzer import HRVAnalyzer
 from core.resp_analyzer import RespAnalyzer
 import cv2
 from scipy.signal import welch
-import threading
 
 
 # ─── One-Euro Filter ────────────────────────────────────────────────────────
@@ -87,7 +86,7 @@ class OneEuroFilter:
 class CalibrationBaseline:
     eye_ratio:        float = 0.0
     nose_ratio:       float = 0.0
-    ear_open:         float = 0.0   # kalibrasyondaki medyan EAR → adaptif blink threshold
+    ear_open:         float = 0.0
     iris_px_baseline: float = 0.0
     valid:            bool  = False
     timestamp:        float = 0.0
@@ -115,8 +114,8 @@ class PostureMetrics:
     heart_rate:         float
     perclos:            float = 0.0
     hrv_rmssd:          float = -1.0
-    resp_rate: float = -1.0
-   
+    resp_rate:          float = -1.0
+    breath_count:       int   = 0
 
     @property
     def cva_angle(self) -> float:
@@ -165,32 +164,31 @@ EAR_BLINK_THRESH  = 0.20
 EAR_CONSEC_FRAMES = 2
 BLINK_WINDOW      = 900
 
-# PERCLOS
-PERCLOS_WINDOW     = 900   # 60 sn @15fps
-PERCLOS_THRESHOLD  = 0.70  # tam açık EAR'ın %70'i altı = kapalı
+PERCLOS_WINDOW    = 900
+PERCLOS_THRESHOLD = 0.70
 
 IRIS_REAL_DIAMETER_MM  = 11.7
 IRIS_BASELINE_DIST_CM  = 60.0
 LEFT_IRIS  = [468, 469, 470, 471, 472]
 RIGHT_IRIS = [473, 474, 475, 476, 477]
-DIST_TOO_CLOSE  = 40.0    # < 40 cm kırmızı
-DIST_WARN_CLOSE = 50.0    # 40-50 cm sarı
-DIST_GOOD_LO    = 50.0    # 50-100 cm yeşil
+DIST_TOO_CLOSE  = 40.0
+DIST_WARN_CLOSE = 50.0
+DIST_GOOD_LO    = 50.0
 DIST_GOOD_HI    = 100.0
-DIST_WARN_FAR   = 100.0   # > 100 cm sarı
+DIST_WARN_FAR   = 100.0
 
-RPPG_BUFFER_FRAMES     = 450   # maksimum buffer
-RPPG_BUFFER_MIN        = 150   # minimum hesaplama için (~10 sn)
-RPPG_SNR_GOOD          = 3.0   # iyi sinyal eşiği
-
+RPPG_BUFFER_FRAMES = 450
+RPPG_BUFFER_MIN    = 150
+RPPG_SNR_GOOD      = 3.0
 RPPG_UPDATE_EVERY  = 60
 RPPG_BPM_LOW       = 42.0
 RPPG_BPM_HIGH      = 150.0
 RPPG_SNR_THRESH    = 1.0
 
-FOREHEAD_LANDMARKS = [10, 9, 151, 108, 69, 67, 54, 21, 284, 298, 337, 338]  # sadece alın
-LEFT_CHEEK_LANDMARKS  = [117, 118, 119, 120, 121, 126, 142, 203, 206, 207]   # sol yanak
-RIGHT_CHEEK_LANDMARKS = [346, 347, 348, 349, 350, 355, 371, 423, 426, 427]   # sağ yanak
+FOREHEAD_LANDMARKS    = [10, 9, 151, 108, 69, 67, 54, 21, 284, 298, 337, 338]
+LEFT_CHEEK_LANDMARKS  = [117, 118, 119, 120, 121, 126, 142, 203, 206, 207]
+RIGHT_CHEEK_LANDMARKS = [346, 347, 348, 349, 350, 355, 371, 423, 426, 427]
+
 
 # ─── Ana sınıf ───────────────────────────────────────────────────────────────
 
@@ -199,19 +197,17 @@ class PoseAnalyzer:
         self.mp_pose = mp.solutions.pose
         self.mp_face = mp.solutions.face_mesh
         self.mp_draw = mp.solutions.drawing_utils
-        self._bpm_history = deque(maxlen=3)
-        self._sitting_start: float = 0.0   # oturma başlangıç zamanı (monotonic)
-        self.show_roi: bool = False
+        self._bpm_history        = deque(maxlen=3)
+        self._sitting_start:     float = 0.0
+        self.show_roi:           bool  = False
         self._perclos_frame_count: int = 0
-        self._hrv = HRVAnalyzer()
-        self._hrv_rmssd: float = -1.0
-        self._eye_break_start: float = 0.0   # 20-20-20 sayacı
+        self._hrv                = HRVAnalyzer()
+        self._hrv_rmssd:         float = -1.0
+        self._eye_break_start:   float = 0.0
         self._eye_break_minutes: float = 0.0
-        self._resp = RespAnalyzer()
-        self._resp_rate: float = -1.0
-        
-        
-
+        self._resp               = RespAnalyzer()
+        self._resp_rate:         float = -1.0
+        self._breath_count:      int   = 0
 
         self.pose = self.mp_pose.Pose(
             static_image_mode=False,
@@ -243,16 +239,16 @@ class PoseAnalyzer:
         self._calibrating:  bool  = False
         self.recent_movement: float = 0.0
 
-        self._ear_history:      deque = deque(maxlen=BLINK_WINDOW)
-        self._blink_frames:     int   = 0
-        self._blink_count:      deque = deque(maxlen=BLINK_WINDOW)
+        self._ear_history:  deque = deque(maxlen=BLINK_WINDOW)
+        self._blink_frames: int   = 0
+        self._blink_count:  deque = deque(maxlen=BLINK_WINDOW)
         self._f_ear = OneEuroFilter(freq=15.0, min_cutoff=2.0, beta=0.01)
 
-        self._perclos_closed_frames: int = 0   # penceredeki kapalı kare sayısı
+        self._perclos_closed_frames: int   = 0
         self._perclos_score:         float = 0.0
 
         self._iris_calib_buffer: list = []
-        self._calib_ear:         list = []  # kalibrasyonda toplanan EAR değerleri
+        self._calib_ear:         list = []
         self._f_dist = OneEuroFilter(freq=15.0, min_cutoff=0.5, beta=0.003)
 
         self._rppg_buffer:      deque = deque(maxlen=RPPG_BUFFER_FRAMES)
@@ -285,16 +281,15 @@ class PoseAnalyzer:
 
     def _finalize_calibration(self):
         arr = np.array(self._calib_buffer)
-        iris_baseline = float(np.median(self._iris_calib_buffer)) if self._iris_calib_buffer else 0.0
         self.baseline = CalibrationBaseline(
             eye_ratio        = float(np.median(arr[:, 0])),
             nose_ratio       = float(np.median(arr[:, 1])),
-            ear_open         = float(np.median(self._calib_ear))  if self._calib_ear  else 0.0,
+            ear_open         = float(np.median(self._calib_ear)) if self._calib_ear else 0.0,
             iris_px_baseline = float(np.median(self._iris_calib_buffer)) if self._iris_calib_buffer else 0.0,
-            valid          = True,
-            timestamp      = time.time(),
-            n_samples      = len(self._calib_buffer),
-            just_completed = True,
+            valid            = True,
+            timestamp        = time.time(),
+            n_samples        = len(self._calib_buffer),
+            just_completed   = True,
         )
         self._calibrating = False
         self._calib_buffer.clear()
@@ -335,12 +330,10 @@ class PoseAnalyzer:
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
-       
 
     # ─── Visibility gating ───────────────────────────────────────────────────
 
     def _landmarks_visible(self, lm) -> bool:
-        """Kritik landmark'ların visibility < 0.5 ise frame'i reddet."""
         PL = self.mp_pose.PoseLandmark
         for idx in [PL.NOSE, PL.LEFT_SHOULDER, PL.RIGHT_SHOULDER,
                     PL.LEFT_EYE, PL.RIGHT_EYE]:
@@ -349,7 +342,6 @@ class PoseAnalyzer:
         return True
 
     def _should_accept_calib_sample(self, tilt: float, shoulder_asym: float, lm) -> bool:
-        """Kalibrasyon kalite filtresi — tilt/asym kötüyse sample reddet."""
         if not self._landmarks_visible(lm):
             return False
         if tilt > 8.0 or shoulder_asym > 0.05:
@@ -359,7 +351,6 @@ class PoseAnalyzer:
     # ─── EAR ─────────────────────────────────────────────────────────────────
 
     def _blink_threshold(self) -> float:
-        """Adaptif threshold: kalibrasyon EAR × 0.70. Yoksa 0.20."""
         if self.baseline.valid and self.baseline.ear_open > 0:
             return float(np.clip(self.baseline.ear_open * 0.70, 0.15, 0.25))
         return 0.20
@@ -384,7 +375,6 @@ class PoseAnalyzer:
         smooth = self._f_ear.update(ear, now_mono)
         self._ear_history.append(smooth)
 
-        # Blink tespiti (mevcut)
         if smooth < EAR_BLINK_THRESH:
             self._blink_frames += 1
         else:
@@ -395,7 +385,6 @@ class PoseAnalyzer:
         cutoff = now_mono - 60.0
         recent_blinks_list = [t for t in self._blink_count if t > cutoff]
 
-        # En az 30 sn veri yoksa henüz güvenilir değil
         oldest_ear_time = now_mono - (len(self._ear_history) / 15.0)
         elapsed = now_mono - oldest_ear_time
         if elapsed < 30.0:
@@ -404,8 +393,6 @@ class PoseAnalyzer:
             recent_blinks = float(len(recent_blinks_list))
 
         avg_ear = float(np.mean(self._ear_history)) if self._ear_history else ear
-
-        # PERCLOS hesabı
 
         if self.baseline.valid and self.baseline.ear_open > 0:
             perclos_thresh = self.baseline.ear_open * PERCLOS_THRESHOLD
@@ -418,13 +405,12 @@ class PoseAnalyzer:
 
         win_size = len(self._ear_history)
 
-        # Pencere dolunca sayacı pencereyle senkronize et
         if win_size >= PERCLOS_WINDOW:
             oldest = list(self._ear_history)[0]
             if oldest < perclos_thresh:
                 self._perclos_closed_frames -= 1
 
-        if win_size >= 90:   # en az 6 sn veri olsun
+        if win_size >= 90:
             clamped = max(0, min(self._perclos_closed_frames, win_size))
             self._perclos_score = (clamped / win_size) * 100.0
         else:
@@ -526,11 +512,7 @@ class PoseAnalyzer:
 
     # ─── rPPG CHROM ──────────────────────────────────────────────────────────
 
-
-
-    # Değiştirilecek — _get_forehead_roi metodundaki tüm içeriği şununla değiştir:
     def _get_forehead_roi(self, face_lm, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
-
         h, w = frame_bgr.shape[:2]
 
         def roi_mean(landmark_list):
@@ -553,15 +535,8 @@ class PoseAnalyzer:
 
         mean_bgr = np.mean(samples, axis=0)
         return np.array([mean_bgr[2], mean_bgr[1], mean_bgr[0]], dtype=np.float64)
-    
 
-
-    
     def _chrom_bpm(self) -> float:
-        """
-        CHROM algoritması — Welch PSD ile BPM tahmini.
-        Returns: BPM > 0, veya -1.0 (yetersiz veri), -3.0 (zayıf sinyal)
-        """
         buf_len = len(self._rppg_buffer)
         if buf_len < RPPG_BUFFER_MIN:
             return -1.0
@@ -572,7 +547,6 @@ class PoseAnalyzer:
             data = np.array(data_samples, dtype=np.float64)
             R, G, B = data[:, 0], data[:, 1], data[:, 2]
 
-            # CHROM
             Rn = R / (R.mean() + 1e-6)
             Gn = G / (G.mean() + 1e-6)
             Bn = B / (B.mean() + 1e-6)
@@ -580,26 +554,21 @@ class PoseAnalyzer:
             Ys = 1.5 * Rn + Gn - 1.5 * Bn
             S  = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
 
-            # Detrend
             t_idx = np.arange(len(S))
             S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
-            
 
-
-            # Gerçek FPS hesapla
             duration = times[-1] - times[0]
             if duration <= 0:
                 return -1.0
             real_fps = (len(times) - 1) / duration
 
-            # Welch PSD
             nperseg = min(len(S), 128)
             freqs, psd = welch(S, fs=real_fps, nperseg=nperseg, noverlap=nperseg // 2)
 
             low  = RPPG_BPM_LOW  / 60.0
             high = RPPG_BPM_HIGH / 60.0
             mask = (freqs >= low) & (freqs <= high)
-            
+
             if mask.sum() == 0:
                 return -1.0
 
@@ -611,22 +580,18 @@ class PoseAnalyzer:
                 if psd_band[priority_mask].max() > psd_band[mask].max() * 0.25:
                     psd_band[~priority_mask] = 0
 
-            # SNR kontrolü
             peak_power  = psd_band.max()
             noise_floor = np.median(psd[mask]) + 1e-6
             snr = peak_power / noise_floor
             if snr < RPPG_SNR_THRESH:
                 return -3.0
 
-            # SNR yüksekse buffer'ı kısalt — gereksiz gecikmeyi azalt
             if snr >= RPPG_SNR_GOOD and buf_len > 200:
-                # Son 200 kare yeterliyse eski veriyi temizle
                 recent = list(self._rppg_buffer)[-200:]
                 self._rppg_buffer.clear()
                 for item in recent:
                     self._rppg_buffer.append(item)
 
-            # BPM hesapla — Gaussian ağırlıklı
             peak_idx = int(np.argmax(psd_band))
             lo = max(peak_idx - 2, 0)
             hi = min(peak_idx + 3, len(freqs))
@@ -638,9 +603,6 @@ class PoseAnalyzer:
                 peak_freq = freqs[peak_idx]
 
             bpm = peak_freq * 60.0
-
-
-            # Medyan smoothing
             self._bpm_history.append(bpm)
             return float(np.median(self._bpm_history))
 
@@ -648,42 +610,34 @@ class PoseAnalyzer:
             return -1.0
 
     def _draw_rppg_overlay(self, frame: np.ndarray, face_lm,
-                       heart_rate: float, motion_suppressed: bool) -> np.ndarray:
-        
+                            heart_rate: float, motion_suppressed: bool) -> np.ndarray:
         if self.show_roi and face_lm is not None:
             h, w = frame.shape[:2]
             for region, color in [(FOREHEAD_LANDMARKS,    (0, 255, 255)),
-                                (LEFT_CHEEK_LANDMARKS,  (0, 200, 200)),
-                                (RIGHT_CHEEK_LANDMARKS, (0, 200, 200))]:
+                                   (LEFT_CHEEK_LANDMARKS,  (0, 200, 200)),
+                                   (RIGHT_CHEEK_LANDMARKS, (0, 200, 200))]:
                 pts  = np.array([[int(face_lm[i].x * w), int(face_lm[i].y * h)]
-                                for i in region], dtype=np.int32)
+                                 for i in region], dtype=np.int32)
                 hull = cv2.convexHull(pts)
                 cv2.polylines(frame, [hull], True, color, 1, cv2.LINE_AA)
 
         if motion_suppressed:
-            hr_color = (180, 180, 180)
-            hr_txt   = "HR: hareket"
+            hr_color, hr_txt = (180, 180, 180), "HR: hareket"
         elif heart_rate == -3.0:
-            hr_color = (0, 165, 255)
-            hr_txt   = "HR: zayif sinyal"
+            hr_color, hr_txt = (0, 165, 255), "HR: zayif sinyal"
         elif heart_rate < 0:
             buf = len(self._rppg_buffer)
             pct = int(buf / RPPG_BUFFER_FRAMES * 100)
-            hr_color = (180, 180, 180)
-            hr_txt   = f"HR: %{pct}"
+            hr_color, hr_txt = (180, 180, 180), f"HR: %{pct}"
         elif heart_rate < 60:
-            hr_color = (0, 165, 255)
-            hr_txt   = f"HR: {heart_rate:.0f} BPM"
+            hr_color, hr_txt = (0, 165, 255), f"HR: {heart_rate:.0f} BPM"
         elif heart_rate <= 100:
-            hr_color = (0, 210, 90)
-            hr_txt   = f"HR: {heart_rate:.0f} BPM"
+            hr_color, hr_txt = (0, 210, 90),  f"HR: {heart_rate:.0f} BPM"
         else:
-            hr_color = (0, 80, 255)
-            hr_txt   = f"HR: {heart_rate:.0f} BPM"
+            hr_color, hr_txt = (0, 80, 255),  f"HR: {heart_rate:.0f} BPM"
 
         frame_w = frame.shape[1]
-        cv2.putText(frame, hr_txt,
-                    (frame_w - 170, 88),
+        cv2.putText(frame, hr_txt, (frame_w - 170, 88),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.48, hr_color, 1, cv2.LINE_AA)
         return frame
 
@@ -756,11 +710,9 @@ class PoseAnalyzer:
         PL  = self.mp_pose.PoseLandmark
         now = time.monotonic()
 
-        # Visibility gating — güvenilmez frame'lerde ölçüm yapma
         if not self._landmarks_visible(lm):
             return self._annotate_no_detection(frame_bgr), None
 
-        # FPS
         if self._prev_frame_time > 0:
             dt = now - self._prev_frame_time
             raw_fps = 1.0 / dt if dt > 0 else 0.0
@@ -817,15 +769,13 @@ class PoseAnalyzer:
             ear_raw, _, _ = self._compute_ear(face_lm, w, h)
             blink_rate, avg_ear, perclos = self._update_blink(ear_raw, now)
 
-            iris_px = self._compute_iris_px(face_lm, w, h)
+            iris_px  = self._compute_iris_px(face_lm, w, h)
             raw_dist = self._compute_screen_distance(iris_px, w)
             screen_distance = self._f_dist.update(raw_dist, now) if raw_dist > 0 else -1.0
 
-            # Dinamik hareket eşiği — sinyal varyansına göre adaptif
             rppg_variance = float(np.var([s[0][1] for s in self._rppg_buffer])) if len(self._rppg_buffer) > 30 else 0.0
             motion_threshold = 0.008 + min(rppg_variance * 0.5, 0.02)
             motion_suppressed = self.recent_movement > motion_threshold
-            
 
             if not motion_suppressed:
                 rgb_sample = self._get_forehead_roi(face_lm, frame_bgr)
@@ -833,8 +783,6 @@ class PoseAnalyzer:
                     self._rppg_buffer.append((rgb_sample, now))
                     self._hrv.add_sample(rgb_sample, now)
                     self._resp.add_sample(rgb_sample, now)
-
-
 
             self._rppg_frame_count += 1
             if self._rppg_frame_count >= RPPG_UPDATE_EVERY:
@@ -845,17 +793,20 @@ class PoseAnalyzer:
                         self._heart_rate = round(self._f_hr.update(bpm, now), 1)
                     elif bpm == -3.0:
                         self._heart_rate = -3.0
-                    # HRV — her RPPG_UPDATE_EVERY karede bir hesapla
+
                     hrv_result = self._hrv.compute()
                     if hrv_result is not None and hrv_result.reliable:
                         self._hrv_rmssd = round(hrv_result.rmssd, 1)
                     elif hrv_result is not None and not hrv_result.reliable:
                         self._hrv_rmssd = -1.0
+
                     resp_result = self._resp.compute()
                     if resp_result is not None and resp_result.reliable:
-                        self._resp_rate = round(resp_result.rate, 1)
+                        self._resp_rate    = round(resp_result.rate, 1)
+                        self._breath_count = resp_result.breath_count
                     elif resp_result is not None and not resp_result.reliable:
-                        self._resp_rate = -1.0
+                        self._resp_rate    = -1.0
+                        self._breath_count = resp_result.breath_count
 
             heart_rate = -2.0 if motion_suppressed else self._heart_rate
         else:
@@ -867,14 +818,13 @@ class PoseAnalyzer:
             motion_suppressed = False
             self._rppg_buffer.clear()
             self._rppg_frame_count = 0
-            self._heart_rate = -1.0
-            iris_px = -1.0
-            avg_ear = -1.0
-            self._sitting_start = 0.0
+            self._heart_rate       = -1.0
+            iris_px                = -1.0
+            avg_ear                = -1.0
+            self._sitting_start    = 0.0
             self.session.stationary_minutes = 0.0
             perclos = -1.0
 
-        # Kalibrasyon buffer — FaceMesh sonrası (avg_ear, iris_px tanımlı)
         if self._calibrating:
             if self._should_accept_calib_sample(tilt_s, smooth_asym, lm):
                 self._calib_buffer.append([eye_s, nose_s])
@@ -900,6 +850,7 @@ class PoseAnalyzer:
             perclos         = perclos,
             hrv_rmssd       = self._hrv_rmssd,
             resp_rate       = self._resp_rate,
+            breath_count    = self._breath_count,
         )
 
         self._update_session(metrics)
@@ -920,8 +871,9 @@ class PoseAnalyzer:
     # ─── Risk sınıflandırma ──────────────────────────────────────────────────
 
     def _classify(self, fhp_score, signals, tilt, shoulder_asym,
-                  neck_var, nose_vis, calib_active,
-                  blink_rate, avg_ear, screen_distance, heart_rate, perclos, hrv_rmssd, resp_rate) -> PostureMetrics:
+                  neck_var, nose_vis, calib_active, blink_rate, avg_ear,
+                  screen_distance, heart_rate, perclos, hrv_rmssd,
+                  resp_rate, breath_count) -> PostureMetrics:
         T        = THRESHOLDS
         score    = 0
         feedback = []
@@ -969,10 +921,9 @@ class PoseAnalyzer:
         if nose_vis < 0.5:
             feedback.append("Yuz net gorunmuyor — kamera acisini ayarla")
 
-        # Yeni — hemen altına ekle:
         if shoulder_asym > T["shoulder_warning"] * 3:
             feedback.append("Omuz tespiti zayif — acik renk giysi/arka plan onerilir")
-        
+
         if perclos >= 0:
             if perclos > 30:
                 score += 20
@@ -990,8 +941,8 @@ class PoseAnalyzer:
         risk = "critical" if score >= 50 else "warning" if score >= 20 else "good"
 
         return PostureMetrics(
-            fhp_risk_score    = round(fhp_score, 1),
-            fhp_signals       = {
+            fhp_risk_score     = round(fhp_score, 1),
+            fhp_signals        = {
                 "eye_ratio":  round(signals["eye_ratio"],  3),
                 "nose_ratio": round(signals["nose_ratio"], 3),
             },
@@ -1010,6 +961,7 @@ class PoseAnalyzer:
             perclos            = round(perclos, 1),
             hrv_rmssd          = round(hrv_rmssd, 1),
             resp_rate          = round(resp_rate, 1),
+            breath_count       = breath_count,
         )
 
     # ─── Oturum ──────────────────────────────────────────────────────────────
@@ -1024,13 +976,11 @@ class PoseAnalyzer:
         s.avg_fhp_score = (s.avg_fhp_score * (n-1) + metrics.fhp_risk_score) / n
         s.avg_tilt      = (s.avg_tilt      * (n-1) + metrics.head_tilt_angle) / n
 
-        # Toplam oturma süresi — yüz algılanıyorsa say
         now = time.monotonic()
         if self._sitting_start == 0.0:
             self._sitting_start = now
         s.stationary_minutes = (now - self._sitting_start) / 60.0
-        
-        # 20-20-20 sayacı
+
         if self._eye_break_start == 0.0:
             self._eye_break_start = now
         self._eye_break_minutes = (now - self._eye_break_start) / 60.0
@@ -1049,24 +999,25 @@ class PoseAnalyzer:
         self._fhp_history.clear()
         self._ear_history.clear()
         self._blink_count.clear()
-        self._blink_frames     = 0
+        self._blink_frames      = 0
         self._rppg_buffer.clear()
-        self._rppg_frame_count = 0
-        self._heart_rate       = -1.0
+        self._rppg_frame_count  = 0
+        self._heart_rate        = -1.0
         self._bpm_history.clear()
-        self._prev_frame_time  = 0.0
-        self._current_fps      = 0.0
-        self._sitting_start = 0.0
+        self._prev_frame_time   = 0.0
+        self._current_fps       = 0.0
+        self._sitting_start     = 0.0
         self.reset_calibration()
         self._hrv.reset()
-        self._hrv_rmssd = -1.0
+        self._hrv_rmssd         = -1.0
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
         self._eye_break_start   = 0.0
         self._eye_break_minutes = 0.0
         self._resp.reset()
-        self._resp_rate = -1.0
+        self._resp_rate         = -1.0
+        self._breath_count      = 0
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
