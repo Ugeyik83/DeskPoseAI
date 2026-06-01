@@ -316,10 +316,9 @@ with st.sidebar:
         if elapsed > 0:
             manual_rate = round(st.session_state.breath_count / elapsed * 60, 1)
             st.markdown(f'<div style="font-size:12px;color:#e6edf3;">Manuel: <b>{manual_rate:.1f}/dk</b> ({st.session_state.breath_count} nefes, {elapsed:.0f} sn)</div>', unsafe_allow_html=True)
-            if ctx.state.playing and ctx.video_processor:
-                algo_rate = st.session_state.get("last_resp_rate", -1)
-                if algo_rate > 0:
-                    st.markdown(f'<div style="font-size:12px;color:#8b949e;">Algoritma: <b>{algo_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
+            algo_rate = st.session_state.get("last_resp_rate", -1)
+            if algo_rate > 0:
+                st.markdown(f'<div style="font-size:12px;color:#8b949e;">Algoritma: <b>{algo_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
 
 
     st.markdown('<div class="sb-title">Bildirim Ayarları</div>', unsafe_allow_html=True)
