@@ -25,11 +25,11 @@ class HRVResult:
 
 class HRVAnalyzer:
     TARGET_FS        = 100.0
-    MIN_PEAKS        = 10
+    MIN_PEAKS        = 20
     MIN_SNR          = 2.0
     MIN_FRAMES       = 500
     MIN_DURATION_SEC = 30.0   # FPS bağımsız süre kontrolü
-    N_WINDOWS        = 4
+    N_WINDOWS        = 3
     WINDOW_SEC       = 30.0
     MIN_HR_BPM       = 45
     MAX_HR_BPM       = 160
@@ -219,7 +219,7 @@ class HRVAnalyzer:
 
         rmssd = float(np.sqrt(np.mean(filtered_diffs ** 2)))
 
-        if not (8.0 <= rmssd <= 400.0):
+        if not (8.0 <= rmssd <= 180.0):
             return None
 
         return round(rmssd, 1)
