@@ -203,7 +203,8 @@ class PoseAnalyzer:
         self._perclos_frame_count: int = 0
         self._hrv = HRVAnalyzer()
         self._hrv_rmssd: float = -1.0
-        self._chrom_s_history: deque = deque(maxlen=150)  # son 10 sn @15fps
+        self._roi_landmark_buffer: deque = deque(maxlen=15)  # ~1 sn @15fps
+        
 
 
         self.pose = self.mp_pose.Pose(
@@ -328,6 +329,7 @@ class PoseAnalyzer:
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
+        self._roi_landmark_buffer.clear()
 
     # ─── Visibility gating ───────────────────────────────────────────────────
 
@@ -522,6 +524,36 @@ class PoseAnalyzer:
 
     # Değiştirilecek — _get_forehead_roi metodundaki tüm içeriği şununla değiştir:
     def _get_forehead_roi(self, face_lm, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
+        
+        # Landmark moving average — ROI stabilitesi
+        current_landmarks = {
+            i: (face_lm[i].x, face_lm[i].y)
+            for i in FOREHEAD_LANDMARKS + LEFT_CHEEK_LANDMARKS + RIGHT_CHEEK_LANDMARKS
+        }
+        self._roi_landmark_buffer.append(current_landmarks)
+
+        # Tampon doluysa ortalama al, dolmadıysa anlık kullan
+        if len(self._roi_landmark_buffer) >= 5:
+            avg_landmarks = {}
+            for idx in current_landmarks:
+                xs = [f[idx][0] for f in self._roi_landmark_buffer]
+                ys = [f[idx][1] for f in self._roi_landmark_buffer]
+                avg_landmarks[idx] = (float(np.mean(xs)), float(np.mean(ys)))
+
+            # face_lm yerine avg_landmarks kullanan yardımcı fonksiyon
+            class _AvgLM:
+                def __init__(self, avg):
+                    self._avg = avg
+                def __getitem__(self, idx):
+                    class _LM:
+                        def __init__(self, x, y):
+                            self.x = x
+                            self.y = y
+                    return _LM(*self._avg[idx])
+
+            face_lm = _AvgLM(avg_landmarks)
+        
+        
         h, w = frame_bgr.shape[:2]
 
         def roi_mean(landmark_list):
@@ -575,9 +607,7 @@ class PoseAnalyzer:
             t_idx = np.arange(len(S))
             S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
             
-            # Sinyal görselleştirme için son değeri kaydet
-            if len(S) > 0:
-                self._chrom_s_history.append(float(S[-1]))
+
 
             # Gerçek FPS hesapla
             duration = times[-1] - times[0]
@@ -826,23 +856,7 @@ class PoseAnalyzer:
                     self._rppg_buffer.append((rgb_sample, now))
                     self._hrv.add_sample(rgb_sample, now)
 
-                    # Sinyal grafiği — her frame'de CHROM anlık hesapla
-                    
-                    if len(self._rppg_buffer) >= 30:
-                        try:
-                            data = np.array([s[0] for s in list(self._rppg_buffer)[-30:]])
-                            R = data[:,0]; G = data[:,1]; B = data[:,2]
-                            Rn = R/(R.mean()+1e-6)
-                            Gn = G/(G.mean()+1e-6)
-                            Bn = B/(B.mean()+1e-6)
-                            Xs = 3*Rn - 2*Gn
-                            Ys = 1.5*Rn + Gn - 1.5*Bn
-                            S  = Xs - (Xs.std()/(Ys.std()+1e-6)) * Ys
-                            t_idx = np.arange(len(S))
-                            S = S - np.polyval(np.polyfit(t_idx, S, 1), t_idx)
-                            self._chrom_s_history.append(float(S[-1]))
-                        except Exception:
-                            pass
+
 
             self._rppg_frame_count += 1
             if self._rppg_frame_count >= RPPG_UPDATE_EVERY:
@@ -1059,6 +1073,7 @@ class PoseAnalyzer:
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
+        self._roi_landmark_buffer.clear()
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
