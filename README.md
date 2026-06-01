@@ -282,7 +282,7 @@ Camera-based ergonomics analysis for office workers. Works with a single laptop 
 
 ![DeskPoseAI Overview](docs/overview_en.png)
 
-[![Streamlit App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-App-FF4B4B?logo=streamlit&logoColor=white)](https://deskposeai.streamlit.app)
 
 ---
 
