@@ -300,18 +300,19 @@ with st.sidebar:
 
     # Algoritma sayacı
     
+    st.markdown('<div class="sb-title">Solunum</div>', unsafe_allow_html=True)
     bc = st.session_state.get("last_breath_count", 0)
     rr = st.session_state.get("last_resp_rate", -1)
     st.markdown(
-        f'<div style="font-family:monospace;font-size:32px;font-weight:700;'
-        f'color:#58a6ff;text-align:center;">{bc}</div>'
-        f'<div style="font-size:11px;color:#8b949e;text-align:center;margin-bottom:6px;">'
-        f'algoritma nefes sayısı</div>',
+        f'<div style="font-family:monospace;font-size:48px;font-weight:700;'
+        f'color:#58a6ff;text-align:center;line-height:1;">{bc}</div>'
+        f'<div style="font-size:11px;color:#8b949e;text-align:center;margin-top:4px;">'
+        f'toplam nefes</div>',
         unsafe_allow_html=True)
     if rr > 0:
         st.markdown(
-            f'<div style="font-size:12px;color:#8b949e;text-align:center;">'
-            f'Hız: <b style="color:#e6edf3">{rr:.1f}/dk</b></div>',
+            f'<div style="font-size:13px;color:#e6edf3;text-align:center;margin-top:6px;">'
+            f'{rr:.1f} <span style="color:#8b949e;font-size:11px;">/dk</span></div>',
             unsafe_allow_html=True)
 
     st.divider()
