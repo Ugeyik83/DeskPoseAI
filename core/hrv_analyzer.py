@@ -30,7 +30,7 @@ class HRVAnalyzer:
     MIN_FRAMES       = 500
     MIN_DURATION_SEC = 20.0   # FPS bağımsız süre kontrolü
     N_WINDOWS        = 4
-    WINDOW_SEC       = 15.0
+    WINDOW_SEC       = 30.0
     MIN_HR_BPM       = 45
     MAX_HR_BPM       = 160
 
