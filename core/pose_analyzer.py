@@ -829,15 +829,10 @@ class PoseAnalyzer:
                         self._heart_rate = -3.0
 
                     hrv_result = self._hrv.compute()
-                    if hrv_result is not None:
-                        self._hrv_snr = round(hrv_result.snr, 2)
-                        self._hrv_bpm = round(hrv_result.bpm, 1)
-                        self._hrv_rr_std = round(hrv_result.rr_std, 1)
-                        self._hrv_reason = hrv_result.reason
-                        if hrv_result.reliable:
-                            self._hrv_rmssd = round(hrv_result.rmssd, 1)
-                        else:
-                            self._hrv_rmssd = -1.0
+                    if hrv_result is not None and hrv_result.reliable:
+                        self._hrv_rmssd = round(hrv_result.rmssd, 1)
+                    elif hrv_result is not None and not hrv_result.reliable:
+                        self._hrv_rmssd = -1.0
 
                     resp_result = self._resp.compute()
                     if resp_result is not None and resp_result.reliable:
@@ -888,10 +883,6 @@ class PoseAnalyzer:
             heart_rate      = heart_rate,
             perclos         = perclos,
             hrv_rmssd       = self._hrv_rmssd,
-            hrv_bpm         = self._hrv_bpm,
-            hrv_snr         = self._hrv_snr,
-            hrv_rr_std      = self._hrv_rr_std,
-            hrv_reason      = self._hrv_reason,
             resp_rate       = self._resp_rate,
             breath_count    = self._breath_count,
         )

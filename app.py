@@ -596,17 +596,6 @@ if ctx.state.playing and ctx.video_processor:
             perc_color, perc_text, perc_unit, perc_desc, perc_prog = "#3fb950", f"{pc:.1f}", "%", "Normal uyanıklık", pc
 
         hrv = metrics.hrv_rmssd
-        hrv_bpm = metrics.hrv_bpm
-        hrv_snr = metrics.hrv_snr
-        hrv_rr_std = metrics.hrv_rr_std
-        hrv_reason = html.escape(metrics.hrv_reason or "Bekleniyor")
-        hrv_bpm_text = f"{hrv_bpm:.1f}" if hrv_bpm >= 0 else "-"
-        hrv_snr_text = f"{hrv_snr:.2f}" if hrv_snr >= 0 else "-"
-        hrv_rr_std_text = f"{hrv_rr_std:.1f} ms" if hrv_rr_std >= 0 else "-"
-        hrv_debug = (
-            f"Debug: BPM={hrv_bpm_text} | SNR={hrv_snr_text} | "
-            f"RR std={hrv_rr_std_text} | reason={hrv_reason}"
-        )
         if hrv < 0:
             hrv_color, hrv_text, hrv_unit, hrv_desc, hrv_prog = "#484f58", "Ölçülüyor", "", "~2 dk sonra aktif", None
         else:
