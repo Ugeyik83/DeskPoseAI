@@ -203,7 +203,7 @@ class PoseAnalyzer:
         self._perclos_frame_count: int = 0
         self._hrv = HRVAnalyzer()
         self._hrv_rmssd: float = -1.0
-        self._roi_landmark_buffer: deque = deque(maxlen=15)  # ~1 sn @15fps
+        
         
 
 
@@ -329,7 +329,7 @@ class PoseAnalyzer:
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
-        self._roi_landmark_buffer.clear()
+       
 
     # ─── Visibility gating ───────────────────────────────────────────────────
 
@@ -524,36 +524,7 @@ class PoseAnalyzer:
 
     # Değiştirilecek — _get_forehead_roi metodundaki tüm içeriği şununla değiştir:
     def _get_forehead_roi(self, face_lm, frame_bgr: np.ndarray) -> Optional[np.ndarray]:
-        
-        # Landmark moving average — ROI stabilitesi
-        current_landmarks = {
-            i: (face_lm[i].x, face_lm[i].y)
-            for i in FOREHEAD_LANDMARKS + LEFT_CHEEK_LANDMARKS + RIGHT_CHEEK_LANDMARKS
-        }
-        self._roi_landmark_buffer.append(current_landmarks)
 
-        # Tampon doluysa ortalama al, dolmadıysa anlık kullan
-        if len(self._roi_landmark_buffer) >= 5:
-            avg_landmarks = {}
-            for idx in current_landmarks:
-                xs = [f[idx][0] for f in self._roi_landmark_buffer]
-                ys = [f[idx][1] for f in self._roi_landmark_buffer]
-                avg_landmarks[idx] = (float(np.mean(xs)), float(np.mean(ys)))
-
-            # face_lm yerine avg_landmarks kullanan yardımcı fonksiyon
-            class _AvgLM:
-                def __init__(self, avg):
-                    self._avg = avg
-                def __getitem__(self, idx):
-                    class _LM:
-                        def __init__(self, x, y):
-                            self.x = x
-                            self.y = y
-                    return _LM(*self._avg[idx])
-
-            face_lm = _AvgLM(avg_landmarks)
-        
-        
         h, w = frame_bgr.shape[:2]
 
         def roi_mean(landmark_list):
@@ -1073,7 +1044,7 @@ class PoseAnalyzer:
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0
-        self._roi_landmark_buffer.clear()
+        
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
