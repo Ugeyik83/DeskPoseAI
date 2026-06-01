@@ -225,10 +225,9 @@ class HRVAnalyzer:
         if not (8.0 <= rmssd <= 180.0):
             return None
 
-        final_bpm = 60000.0 / float(np.mean(rr))
         return {
             "rmssd": round(rmssd, 1),
-            "bpm": round(final_bpm, 1),
+            "bpm": round(float(hr_bpm), 1),
             "rr_std": round(float(np.std(rr)), 1),
         }
 

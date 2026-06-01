@@ -915,9 +915,8 @@ class PoseAnalyzer:
 
     def _classify(self, fhp_score, signals, tilt, shoulder_asym,
                   neck_var, nose_vis, calib_active, blink_rate, avg_ear,
-                  screen_distance, heart_rate, perclos, hrv_rmssd, hrv_bpm,
-                  hrv_snr, hrv_rr_std, hrv_reason, resp_rate,
-                  breath_count) -> PostureMetrics:
+                  screen_distance, heart_rate, perclos, hrv_rmssd,
+                  resp_rate, breath_count) -> PostureMetrics:
         T        = THRESHOLDS
         score    = 0
         feedback = []
@@ -1004,10 +1003,6 @@ class PoseAnalyzer:
             feedback           = feedback,
             perclos            = round(perclos, 1),
             hrv_rmssd          = round(hrv_rmssd, 1),
-            hrv_bpm            = round(hrv_bpm, 1),
-            hrv_snr            = round(hrv_snr, 2),
-            hrv_rr_std         = round(hrv_rr_std, 1),
-            hrv_reason         = hrv_reason,
             resp_rate          = round(resp_rate, 1),
             breath_count       = breath_count,
         )
@@ -1058,10 +1053,6 @@ class PoseAnalyzer:
         self.reset_calibration()
         self._hrv.reset()
         self._hrv_rmssd         = -1.0
-        self._hrv_bpm           = -1.0
-        self._hrv_snr           = -1.0
-        self._hrv_rr_std        = -1.0
-        self._hrv_reason        = "Bekleniyor"
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0

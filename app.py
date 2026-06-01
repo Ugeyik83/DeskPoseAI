@@ -650,8 +650,7 @@ if ctx.state.playing and ctx.video_processor:
                 + _metric("PERCLOS (Göz Kapalı %)", perc_text, perc_unit, perc_desc,
                           perc_color, prog_pct=perc_prog)
                 + _metric("HRV — RMSSD", hrv_text, hrv_unit, hrv_desc,
-                          hrv_color, prog_pct=hrv_prog,
-                          disclaimer=hrv_debug)
+                          hrv_color, prog_pct=hrv_prog)
                 + _metric("Baş Eğim Açısı (Roll)",
                           str(metrics.head_tilt_angle), "°",
                           "arctan(Δy/Δx) — yana dönüşle karışabilir",
