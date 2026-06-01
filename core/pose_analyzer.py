@@ -538,30 +538,30 @@ class PoseAnalyzer:
 
     def _chrom_bpm(self) -> float:
 
-"""1. Kameradan gelen yüz renklerini alır.
-2. Kırmızı, yeşil, mavi renk değişimlerini işler.
-3. Işık ve hareket kaynaklı gereksiz değişimleri azaltır.
-4. Renk sinyalinin içinde kalp atımına benzeyen ritmi arar.
-5. En güçlü ritmi bulur.
-6. Bu ritmi BPM değerine çevirir.
-7. Sonuç çok gürültülüyse güvenilir değil der.
-8. Daha stabil sonuç için geçmiş ölçümlerin medyanını döndürür.
+        """1. Kameradan gelen yüz renklerini alır.
+        2. Kırmızı, yeşil, mavi renk değişimlerini işler.
+        3. Işık ve hareket kaynaklı gereksiz değişimleri azaltır.
+        4. Renk sinyalinin içinde kalp atımına benzeyen ritmi arar.
+        5. En güçlü ritmi bulur.
+        6. Bu ritmi BPM değerine çevirir.
+        7. Sonuç çok gürültülüyse güvenilir değil der.
+        8. Daha stabil sonuç için geçmiş ölçümlerin medyanını döndürür.
 
-Nabız = 3 kırmızı - 2 yeşil
+        Nabız = 3 kırmızı - 2 yeşil
 
-Kameradaki kırmızı, yeşil ve mavi değişimlerini öyle karıştır ki;
-ışık ve hareket etkisi azalsın,
-kan dolaşımından gelen küçük ritmik değişim ortaya çıksın.
+        Kameradaki kırmızı, yeşil ve mavi değişimlerini öyle karıştır ki;
+        ışık ve hareket etkisi azalsın,
+        kan dolaşımından gelen küçük ritmik değişim ortaya çıksın.
 
-Xs = 3 * Rn - 2 * Gn
-Ys = 1.5 * Rn + Gn - 1.5 * Bn
-S  = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
+        Xs = 3 * Rn - 2 * Gn
+        Ys = 1.5 * Rn + Gn - 1.5 * Bn
+        S  = Xs - (Xs.std() / (Ys.std() + 1e-6)) * Ys
 
-1. R, G, B normalize ediliyor.
-2. İki farklı renk farkı sinyali oluşturuluyor.
-3. Bu iki sinyalin gürültü seviyesi dengeleniyor.
-4. Biri diğerinden çıkarılarak daha temiz bir nabız sinyali elde ediliyor.
-"""
+        1. R, G, B normalize ediliyor.
+        2. İki farklı renk farkı sinyali oluşturuluyor.
+        3. Bu iki sinyalin gürültü seviyesi dengeleniyor.
+        4. Biri diğerinden çıkarılarak daha temiz bir nabız sinyali elde ediliyor.
+        """
 
         buf_len = len(self._rppg_buffer)
         if buf_len < RPPG_BUFFER_MIN:
