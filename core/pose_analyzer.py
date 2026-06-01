@@ -114,6 +114,10 @@ class PostureMetrics:
     heart_rate:         float
     perclos:            float = 0.0
     hrv_rmssd:          float = -1.0
+    hrv_bpm:            float = -1.0
+    hrv_snr:            float = -1.0
+    hrv_rr_std:         float = -1.0
+    hrv_reason:         str   = ""
     resp_rate:          float = -1.0
     breath_count:       int   = 0
 
@@ -203,6 +207,10 @@ class PoseAnalyzer:
         self._perclos_frame_count: int = 0
         self._hrv                = HRVAnalyzer()
         self._hrv_rmssd:         float = -1.0
+        self._hrv_bpm:           float = -1.0
+        self._hrv_snr:           float = -1.0
+        self._hrv_rr_std:        float = -1.0
+        self._hrv_reason:        str   = "Bekleniyor"
         self._eye_break_start:   float = 0.0
         self._eye_break_minutes: float = 0.0
         self._resp               = RespAnalyzer()
@@ -821,10 +829,15 @@ class PoseAnalyzer:
                         self._heart_rate = -3.0
 
                     hrv_result = self._hrv.compute()
-                    if hrv_result is not None and hrv_result.reliable:
-                        self._hrv_rmssd = round(hrv_result.rmssd, 1)
-                    elif hrv_result is not None and not hrv_result.reliable:
-                        self._hrv_rmssd = -1.0
+                    if hrv_result is not None:
+                        self._hrv_snr = round(hrv_result.snr, 2)
+                        self._hrv_bpm = round(hrv_result.bpm, 1)
+                        self._hrv_rr_std = round(hrv_result.rr_std, 1)
+                        self._hrv_reason = hrv_result.reason
+                        if hrv_result.reliable:
+                            self._hrv_rmssd = round(hrv_result.rmssd, 1)
+                        else:
+                            self._hrv_rmssd = -1.0
 
                     resp_result = self._resp.compute()
                     if resp_result is not None and resp_result.reliable:
@@ -875,6 +888,10 @@ class PoseAnalyzer:
             heart_rate      = heart_rate,
             perclos         = perclos,
             hrv_rmssd       = self._hrv_rmssd,
+            hrv_bpm         = self._hrv_bpm,
+            hrv_snr         = self._hrv_snr,
+            hrv_rr_std      = self._hrv_rr_std,
+            hrv_reason      = self._hrv_reason,
             resp_rate       = self._resp_rate,
             breath_count    = self._breath_count,
         )
@@ -898,8 +915,9 @@ class PoseAnalyzer:
 
     def _classify(self, fhp_score, signals, tilt, shoulder_asym,
                   neck_var, nose_vis, calib_active, blink_rate, avg_ear,
-                  screen_distance, heart_rate, perclos, hrv_rmssd,
-                  resp_rate, breath_count) -> PostureMetrics:
+                  screen_distance, heart_rate, perclos, hrv_rmssd, hrv_bpm,
+                  hrv_snr, hrv_rr_std, hrv_reason, resp_rate,
+                  breath_count) -> PostureMetrics:
         T        = THRESHOLDS
         score    = 0
         feedback = []
@@ -986,6 +1004,10 @@ class PoseAnalyzer:
             feedback           = feedback,
             perclos            = round(perclos, 1),
             hrv_rmssd          = round(hrv_rmssd, 1),
+            hrv_bpm            = round(hrv_bpm, 1),
+            hrv_snr            = round(hrv_snr, 2),
+            hrv_rr_std         = round(hrv_rr_std, 1),
+            hrv_reason         = hrv_reason,
             resp_rate          = round(resp_rate, 1),
             breath_count       = breath_count,
         )
@@ -1036,6 +1058,10 @@ class PoseAnalyzer:
         self.reset_calibration()
         self._hrv.reset()
         self._hrv_rmssd         = -1.0
+        self._hrv_bpm           = -1.0
+        self._hrv_snr           = -1.0
+        self._hrv_rr_std        = -1.0
+        self._hrv_reason        = "Bekleniyor"
         self._perclos_closed_frames = 0
         self._perclos_frame_count   = 0
         self._perclos_score         = 0.0

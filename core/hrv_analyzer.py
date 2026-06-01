@@ -19,6 +19,8 @@ class HRVResult:
     nn50:     int
     pnn50:    float
     snr:      float
+    bpm:      float
+    rr_std:   float
     reliable: bool
     reason:   str
 
@@ -129,7 +131,7 @@ class HRVAnalyzer:
 
     # ── Tek pencere RMSSD ─────────────────────────────────────────────────────
     def _compute_window_rmssd(self, rgb_data: np.ndarray,
-                               times: np.ndarray) -> Optional[float]:
+                               times: np.ndarray) -> Optional[dict]:
         # Timestamp sıralama + unique kontrolü
         order = np.argsort(times)
         times = times[order]
@@ -191,12 +193,13 @@ class HRVAnalyzer:
             return None
 
         # RR std kontrolü — çok saçma dağılımı reddet
-        if np.std(rr) > 250:
+        rr_std_raw = float(np.std(rr))
+        if rr_std_raw > 250:
             return None
 
         # Adaptif outlier filtresi
         rr_median = np.median(rr)
-        rr_std    = np.std(rr)
+        rr_std    = float(np.std(rr))
         if rr_std > 1e-6:
             rr = rr[np.abs(rr - rr_median) < 2.5 * rr_std]
 
@@ -222,7 +225,12 @@ class HRVAnalyzer:
         if not (8.0 <= rmssd <= 180.0):
             return None
 
-        return round(rmssd, 1)
+        final_bpm = 60000.0 / float(np.mean(rr))
+        return {
+            "rmssd": round(rmssd, 1),
+            "bpm": round(final_bpm, 1),
+            "rr_std": round(float(np.std(rr)), 1),
+        }
 
     # ── Ana hesaplama — temporal averaging ───────────────────────────────────
     def compute(self) -> Optional[HRVResult]:
@@ -262,11 +270,12 @@ class HRVAnalyzer:
 
         if snr < self.MIN_SNR:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
+                             snr=round(snr, 2), bpm=-1, rr_std=-1,
+                             reliable=False,
                              reason=f"Düşük SNR: {snr:.2f}")
 
         # Kayan pencereler
-        window_results: List[float] = []
+        window_results: List[dict] = []
         step = max(1.0, (total_duration - self.WINDOW_SEC) / max(self.N_WINDOWS - 1, 1))
 
         for i in range(self.N_WINDOWS):
@@ -285,17 +294,21 @@ class HRVAnalyzer:
 
         if not window_results:
             return HRVResult(rmssd=-1, nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
+                             snr=round(snr, 2), bpm=-1, rr_std=-1,
+                             reliable=False,
                              reason="Hiçbir pencere geçerli değil")
 
         # Temporal averaging — medyan + history smoothing
-        rmssd_avg = float(np.median(window_results))
+        rmssd_avg = float(np.median([r["rmssd"] for r in window_results]))
+        bpm_avg = float(np.median([r["bpm"] for r in window_results]))
+        rr_std_avg = float(np.median([r["rr_std"] for r in window_results]))
         self._rmssd_history.append(rmssd_avg)
         rmssd_smooth = float(np.median(self._rmssd_history))
 
         if len(window_results) < 2:
             return HRVResult(rmssd=round(rmssd_smooth, 1), nn50=-1, pnn50=-1,
-                             snr=round(snr, 2), reliable=False,
+                             snr=round(snr, 2), bpm=round(bpm_avg, 1),
+                             rr_std=round(rr_std_avg, 1), reliable=False,
                              reason=f"Tek pencere: {len(window_results)}")
 
         return HRVResult(
@@ -303,6 +316,8 @@ class HRVAnalyzer:
             nn50     = -1,
             pnn50    = -1.0,
             snr      = round(snr, 2),
+            bpm      = round(bpm_avg, 1),
+            rr_std   = round(rr_std_avg, 1),
             reliable = True,
             reason   = f"OK ({len(window_results)} pencere)",
         )
