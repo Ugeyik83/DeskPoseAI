@@ -34,7 +34,7 @@ class HRVAnalyzer:
     MIN_HR_BPM       = 45
     MAX_HR_BPM       = 160
 
-    def __init__(self, buffer_size: int = 500):
+    def __init__(self, buffer_size: int = 1500):
         self._rgb_buffer:     deque      = deque(maxlen=buffer_size)
         self._time_buffer:    deque      = deque(maxlen=buffer_size)
         self._rmssd_history:  deque      = deque(maxlen=self.N_WINDOWS)
