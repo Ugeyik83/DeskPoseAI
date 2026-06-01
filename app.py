@@ -299,20 +299,20 @@ with st.sidebar:
         unsafe_allow_html=True)
 
     # Algoritma sayacı
-    if ctx.state.playing and ctx.video_processor:
-        bc = getattr(ctx.video_processor.analyzer, '_breath_count', 0)
-        rr = st.session_state.get("last_resp_rate", -1)
+    
+    bc = st.session_state.get("last_breath_count", 0)
+    rr = st.session_state.get("last_resp_rate", -1)
+    st.markdown(
+        f'<div style="font-family:monospace;font-size:32px;font-weight:700;'
+        f'color:#58a6ff;text-align:center;">{bc}</div>'
+        f'<div style="font-size:11px;color:#8b949e;text-align:center;margin-bottom:6px;">'
+        f'algoritma nefes sayısı</div>',
+        unsafe_allow_html=True)
+    if rr > 0:
         st.markdown(
-            f'<div style="font-family:monospace;font-size:32px;font-weight:700;'
-            f'color:#58a6ff;text-align:center;">{bc}</div>'
-            f'<div style="font-size:11px;color:#8b949e;text-align:center;margin-bottom:6px;">'
-            f'algoritma nefes sayısı</div>',
+            f'<div style="font-size:12px;color:#8b949e;text-align:center;">'
+            f'Hız: <b style="color:#e6edf3">{rr:.1f}/dk</b></div>',
             unsafe_allow_html=True)
-        if rr > 0:
-            st.markdown(
-                f'<div style="font-size:12px;color:#8b949e;text-align:center;">'
-                f'Hız: <b style="color:#e6edf3">{rr:.1f}/dk</b></div>',
-                unsafe_allow_html=True)
 
     st.divider()
 
@@ -579,6 +579,7 @@ if ctx.state.playing and ctx.video_processor:
         # Solunum Hızı
         rr = metrics.resp_rate
         st.session_state["last_resp_rate"] = rr
+        st.session_state["last_breath_count"] = metrics.breath_count
         if rr < 0:
             resp_color, resp_text, resp_unit, resp_desc, resp_prog = "#8b949e", "Ölçülüyor", "", "~15 sn sonra aktif", None
         elif rr < 12:
