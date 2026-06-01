@@ -5,7 +5,7 @@ Deneysel modül — klinik kullanım için değil.
 """
 
 import numpy as np
-import pywt
+
 from scipy.interpolate import CubicSpline
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import butter, filtfilt
@@ -124,17 +124,6 @@ class HRVAnalyzer:
             return None
 
 
-        # DWT — H.264 sıkıştırma gürültüsü temizleme
-        try:
-            coeffs = pywt.wavedec(sig_resampled, 'db4', level=4)
-            threshold = (np.sqrt(2 * np.log(len(sig_resampled))) *
-                        np.median(np.abs(coeffs[-1])) / 0.6745)
-            coeffs_thresh = [coeffs[0]]
-            for c in coeffs[1:]:
-                coeffs_thresh.append(pywt.threshold(c, threshold, mode='soft'))
-            sig_resampled = pywt.waverec(coeffs_thresh, 'db4')[:len(sig_resampled)]
-        except Exception:
-            pass
 
         # Bandpass filtre — DWT'den sonra kalan gürültüyü azaltmak için
         try:
