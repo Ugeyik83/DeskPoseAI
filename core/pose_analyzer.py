@@ -12,6 +12,7 @@ from collections import deque
 from dataclasses import dataclass
 from typing import Optional, Tuple, Dict
 from core.hrv_analyzer import HRVAnalyzer
+from core.resp_analyzer import RespAnalyzer
 import cv2
 from scipy.signal import welch
 import threading
@@ -114,6 +115,7 @@ class PostureMetrics:
     heart_rate:         float
     perclos:            float = 0.0
     hrv_rmssd:          float = -1.0
+    resp_rate: float = -1.0
    
 
     @property
@@ -205,6 +207,8 @@ class PoseAnalyzer:
         self._hrv_rmssd: float = -1.0
         self._eye_break_start: float = 0.0   # 20-20-20 sayacı
         self._eye_break_minutes: float = 0.0
+        self._resp = RespAnalyzer()
+        self._resp_rate: float = -1.0
         
         
 
@@ -828,6 +832,7 @@ class PoseAnalyzer:
                 if rgb_sample is not None:
                     self._rppg_buffer.append((rgb_sample, now))
                     self._hrv.add_sample(rgb_sample, now)
+                    self._resp.add_sample(rgb_sample, now)
 
 
 
@@ -846,6 +851,11 @@ class PoseAnalyzer:
                         self._hrv_rmssd = round(hrv_result.rmssd, 1)
                     elif hrv_result is not None and not hrv_result.reliable:
                         self._hrv_rmssd = -1.0
+                    resp_result = self._resp.compute()
+                    if resp_result is not None and resp_result.reliable:
+                        self._resp_rate = round(resp_result.rate, 1)
+                    elif resp_result is not None and not resp_result.reliable:
+                        self._resp_rate = -1.0
 
             heart_rate = -2.0 if motion_suppressed else self._heart_rate
         else:
@@ -889,6 +899,7 @@ class PoseAnalyzer:
             heart_rate      = heart_rate,
             perclos         = perclos,
             hrv_rmssd       = self._hrv_rmssd,
+            resp_rate       = self._resp_rate,
         )
 
         self._update_session(metrics)
@@ -910,7 +921,7 @@ class PoseAnalyzer:
 
     def _classify(self, fhp_score, signals, tilt, shoulder_asym,
                   neck_var, nose_vis, calib_active,
-                  blink_rate, avg_ear, screen_distance, heart_rate, perclos, hrv_rmssd) -> PostureMetrics:
+                  blink_rate, avg_ear, screen_distance, heart_rate, perclos, hrv_rmssd, resp_rate) -> PostureMetrics:
         T        = THRESHOLDS
         score    = 0
         feedback = []
@@ -998,6 +1009,7 @@ class PoseAnalyzer:
             feedback           = feedback,
             perclos            = round(perclos, 1),
             hrv_rmssd          = round(hrv_rmssd, 1),
+            resp_rate          = round(resp_rate, 1),
         )
 
     # ─── Oturum ──────────────────────────────────────────────────────────────
@@ -1053,6 +1065,8 @@ class PoseAnalyzer:
         self._perclos_score         = 0.0
         self._eye_break_start   = 0.0
         self._eye_break_minutes = 0.0
+        self._resp.reset()
+        self._resp_rate = -1.0
 
     # ─── Görselleştirme ──────────────────────────────────────────────────────
 
