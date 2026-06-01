@@ -317,27 +317,6 @@ with st.sidebar:
 
     st.divider()
 
-    # Manuel karşılaştırma
-    manual_count = st.number_input("30 sn'de kendin kaç saydın?",
-                                    min_value=0, max_value=30,
-                                    value=0, step=1)
-    if manual_count > 0:
-        manual_rate = round(manual_count / 30 * 60, 1)
-        algo_rate   = st.session_state.get("last_resp_rate", -1)
-        st.markdown(
-            f'<div style="font-size:12px;color:#e6edf3;">Manuel: '
-            f'<b>{manual_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
-        if algo_rate > 0:
-            diff       = abs(manual_rate - algo_rate)
-            diff_color = "#3fb950" if diff < 3 else "#d29922" if diff < 6 else "#f85149"
-            st.markdown(
-                f'<div style="font-size:12px;color:#8b949e;">Algoritma: '
-                f'<b>{algo_rate:.1f}/dk</b></div>', unsafe_allow_html=True)
-            st.markdown(
-                f'<div style="font-size:12px;color:{diff_color};">Fark: '
-                f'<b>{diff:.1f}/dk</b></div>', unsafe_allow_html=True)
-
-    st.divider()
 
     st.markdown('<div class="sb-title">Oturum Kaydı</div>', unsafe_allow_html=True)
     st.session_state.log_enabled = st.toggle("CSV olarak kaydet", value=True)
