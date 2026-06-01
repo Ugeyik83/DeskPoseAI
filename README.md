@@ -5,7 +5,7 @@ Ofis çalışanları için kamera tabanlı ergonomi analizi. Tek bir dizüstü b
 
 ![DeskPoseAI Genel Bakış](docs/overview.png)
 
-[![Streamlit Uygulaması](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://deskposeai.streamlit.app)
+[![Streamlit App](https://img.shields.io/badge/Streamlit-App-FF4B4B?logo=streamlit&logoColor=white)](https://deskposeai.streamlit.app)
 
 ---
 
