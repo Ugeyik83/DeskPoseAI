@@ -425,7 +425,7 @@ if ctx.state.playing and ctx.video_processor:
 
         # 20-20-20 hatırlatıcısı
         eye_min = processor.analyzer._eye_break_minutes
-        if eye_min >= 0.2:
+        if eye_min >= 20.0:
             remaining = 21.0 - eye_min
             if remaining > 0:
                 eye_break_ph.info(
