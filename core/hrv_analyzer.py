@@ -1,11 +1,10 @@
 """
 HRVAnalyzer: rPPG sinyalinden HRV tahmini.
-CHROM + Elgendi peak detection + Temporal averaging.
+CHROM + Ten rengi kalibrasyonu + Elgendi peak detection + Temporal averaging.
 Deneysel modül — klinik kullanım için değil.
 """
 
 import numpy as np
-
 from scipy.interpolate import CubicSpline
 from scipy.ndimage import uniform_filter1d
 from scipy.signal import butter, filtfilt
@@ -29,22 +28,54 @@ class HRVAnalyzer:
     MIN_PEAKS    = 10
     MIN_SNR      = 2.0
     MIN_FRAMES   = 500
-    N_WINDOWS    = 4      # temporal averaging pencere sayısı
-    WINDOW_SEC   = 12.0   # her pencere süresi (sn)
+    N_WINDOWS    = 4
+    WINDOW_SEC   = 12.0
 
     def __init__(self, buffer_size: int = 500):
-        self._rgb_buffer:  deque = deque(maxlen=buffer_size)
-        self._time_buffer: deque = deque(maxlen=buffer_size)
-        self._rmssd_history: deque = deque(maxlen=self.N_WINDOWS)
+        self._rgb_buffer:     deque      = deque(maxlen=buffer_size)
+        self._time_buffer:    deque      = deque(maxlen=buffer_size)
+        self._rmssd_history:  deque      = deque(maxlen=self.N_WINDOWS)
+        self._chrom_gain:     np.ndarray = None
+        self._gain_computed:  bool       = False
 
     def add_sample(self, rgb_mean: np.ndarray, timestamp: float):
         self._rgb_buffer.append(rgb_mean.astype(np.float64))
         self._time_buffer.append(timestamp)
 
+    # ── Ten rengi kazanç kalibrasyonu ────────────────────────────────────────
+    @staticmethod
+    def _compute_gain(rgb_data: np.ndarray) -> np.ndarray:
+        """
+        Ten rengi kalibrasyonu.
+        Koyu ten: R kanalı ağırlığı artar.
+        Açık ten: G kanalı baskın kalır.
+        """
+        R_mean = rgb_data[:, 0].mean()
+        G_mean = rgb_data[:, 1].mean()
+        B_mean = rgb_data[:, 2].mean()
+
+        total   = R_mean + G_mean + B_mean + 1e-6
+        r_ratio = R_mean / total
+        g_ratio = G_mean / total
+
+        r_gain = 1.0 + max(0.0, 0.33 - g_ratio) * 2.0
+        g_gain = 1.0
+        b_gain = 1.0 + max(0.0, 0.33 - r_ratio) * 0.5
+
+        return np.array([r_gain, g_gain, b_gain])
+
     # ── CHROM sinyali ────────────────────────────────────────────────────────
     @staticmethod
-    def _chrom_signal(rgb_data: np.ndarray) -> np.ndarray:
+    def _chrom_signal(rgb_data: np.ndarray,
+                      gain: np.ndarray = None) -> np.ndarray:
+        """CHROM algoritması (De Haan & Jeanne 2013)."""
         R, G, B = rgb_data[:, 0], rgb_data[:, 1], rgb_data[:, 2]
+
+        if gain is not None:
+            R = R * gain[0]
+            G = G * gain[1]
+            B = B * gain[2]
+
         Rn = R / (R.mean() + 1e-6)
         Gn = G / (G.mean() + 1e-6)
         Bn = B / (B.mean() + 1e-6)
@@ -101,9 +132,11 @@ class HRVAnalyzer:
     # ── Tek pencere RMSSD ─────────────────────────────────────────────────────
     def _compute_window_rmssd(self, rgb_data: np.ndarray,
                                times: np.ndarray) -> Optional[float]:
-        """Tek bir zaman penceresi için RMSSD hesapla."""
         try:
-            S = self._chrom_signal(rgb_data)
+            if not self._gain_computed:
+                self._chrom_gain    = self._compute_gain(rgb_data)
+                self._gain_computed = True
+            S = self._chrom_signal(rgb_data, gain=self._chrom_gain)
         except Exception:
             return None
 
@@ -116,25 +149,18 @@ class HRVAnalyzer:
             return None
 
         try:
-            t_uniform = np.linspace(times[0], times[-1],
-                                     int(duration * self.TARGET_FS))
+            t_uniform     = np.linspace(times[0], times[-1],
+                                         int(duration * self.TARGET_FS))
             cs            = CubicSpline(times, S)
             sig_resampled = cs(t_uniform)
         except Exception:
             return None
 
-
-
-        # Bandpass filtre — DWT'den sonra kalan gürültüyü azaltmak için
         try:
             b, a = butter(3, [0.7, 2.5], btype='band', fs=self.TARGET_FS)
             sig_resampled = filtfilt(b, a, sig_resampled)
         except Exception:
             pass
-        
-
-
-
 
         std = sig_resampled.std()
         if std < 1e-6:
@@ -152,22 +178,20 @@ class HRVAnalyzer:
         if len(rr) < 4:
             return None
 
-        # Adaptif outlier filtresi
         rr_median = np.median(rr)
         rr_std    = np.std(rr)
         rr        = rr[np.abs(rr - rr_median) < 2.5 * rr_std]
 
-        # MAD filtresi
         rr_mad = np.median(np.abs(rr - np.median(rr)))
         rr     = rr[np.abs(rr - np.median(rr)) < 3 * rr_mad]
 
         if len(rr) < 4:
             return None
 
-        # %20 ardışık fark filtresi — fizyolojik tutarsız sıçramaları at
-        diff_rr   = np.diff(rr)
-        threshold = 0.20 * rr[:-1]
-        valid_mask = np.abs(diff_rr) < threshold
+        # %20 ardışık fark filtresi
+        diff_rr        = np.diff(rr)
+        threshold      = 0.20 * rr[:-1]
+        valid_mask     = np.abs(diff_rr) < threshold
         filtered_diffs = diff_rr[valid_mask]
 
         if len(filtered_diffs) == 0:
@@ -192,10 +216,9 @@ class HRVAnalyzer:
         if total_duration < self.WINDOW_SEC:
             return None
 
-        # SNR — tüm buffer üzerinde
         try:
-            S_full = self._chrom_signal(rgb_all)
-            snr = float(np.var(S_full) / (np.var(np.diff(S_full)) + 1e-6))
+            S_full = self._chrom_signal(rgb_all, gain=self._chrom_gain)
+            snr    = float(np.var(S_full) / (np.var(np.diff(S_full)) + 1e-6))
         except Exception:
             snr = 0.0
 
@@ -204,7 +227,6 @@ class HRVAnalyzer:
                              snr=round(snr, 2), reliable=False,
                              reason=f"Düşük SNR: {snr:.2f}")
 
-        # Kayan pencereler — son N_WINDOWS × WINDOW_SEC hesapla
         window_results: List[float] = []
         step = max(1.0, (total_duration - self.WINDOW_SEC) / max(self.N_WINDOWS - 1, 1))
 
@@ -227,24 +249,17 @@ class HRVAnalyzer:
                              snr=round(snr, 2), reliable=False,
                              reason="Hiçbir pencere geçerli değil")
 
-        # Temporal averaging — medyan (outlier'a dayanıklı)
         rmssd_avg = float(np.median(window_results))
 
-        # Güvenilirlik: en az 2 pencere gerekli
         if len(window_results) < 2:
             return HRVResult(rmssd=round(rmssd_avg, 1), nn50=-1, pnn50=-1,
                              snr=round(snr, 2), reliable=False,
                              reason=f"Tek pencere: {len(window_results)}")
 
-        # nn50 ve pnn50 — son geçerli pencereden
-        # Basit tahmin: temporal averaging sonucuna göre
-        nn50  = -1
-        pnn50 = -1.0
-
         return HRVResult(
             rmssd    = round(rmssd_avg, 1),
-            nn50     = nn50,
-            pnn50    = pnn50,
+            nn50     = -1,
+            pnn50    = -1.0,
             snr      = round(snr, 2),
             reliable = True,
             reason   = f"OK ({len(window_results)} pencere ortalaması)",
@@ -254,3 +269,5 @@ class HRVAnalyzer:
         self._rgb_buffer.clear()
         self._time_buffer.clear()
         self._rmssd_history.clear()
+        self._chrom_gain    = None
+        self._gain_computed = False
